@@ -1,0 +1,26 @@
+name: 🔌 Connector request
+description: Ask for (or offer to build) a connector for a payment aggregator
+labels: [connector-request]
+body:
+  - type: input
+    id: provider
+    attributes:
+      label: Aggregator name and website
+    validations:
+      required: true
+  - type: input
+    id: coverage
+    attributes:
+      label: Countries, currencies, and networks covered
+      placeholder: "BJ, CI, SN — XOF — MTN, Moov, Orange, Wave"
+  - type: input
+    id: docs
+    attributes:
+      label: Link to the API documentation
+  - type: checkboxes
+    id: offer
+    attributes:
+      label: Contribution
+      options:
+        - label: I can help build or maintain this connector
+        - label: I have a sandbox account with this provider

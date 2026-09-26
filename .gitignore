@@ -1,0 +1,20 @@
+node_modules/
+dist/
+coverage/
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Secrets — never commit provider keys
+.env
+.env.*
+!.env.example
+
+# Notes privées locales (fiche de suivi, brouillons)
+.private/
+
+# Intégration de référence (FedaPay) — sert de modèle local, jamais publiée
+/fedapay.service.ts
