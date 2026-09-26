@@ -180,7 +180,9 @@ Idempotency:
 
 Payenv needs a small amount of state (payments, attempts, idempotency keys,
 processed webhook IDs, success-rate stats). The store is an interface with
-adapters: `memory` (dev/tests), then `postgres`, `redis`, `sqlite`, …
+adapters: `memory` (dev/tests, built into the core), then `postgres`, `redis`,
+`sqlite`, … Its `create` operation must be atomic, so that two concurrent calls
+with the same idempotency key can never both start a charge.
 The integrator owns the store and its data.
 
 ## 7. Observability
@@ -189,14 +191,14 @@ The integrator owns the store and its data.
   wire to its own logs, metrics, or tracing (OpenTelemetry-friendly).
 - No built-in telemetry sent anywhere.
 
-## 8. Packaging (initial proposal)
+## 8. Packaging
 
 ```
-@payenv/core                 unified model, router, attempt engine, interfaces
+@payenv/core                 unified model, router, attempt engine, interfaces,
+                             and an in-memory store for development and tests
 @payenv/connector-fedapay    one package per connector
 @payenv/connector-kkiapay
-@payenv/store-memory
-@payenv/store-postgres
+@payenv/store-postgres       persistent stores, one package each
 ```
 
 ## Open questions

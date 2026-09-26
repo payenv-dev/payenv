@@ -13,11 +13,12 @@
 
 ## Phase 1 — Core + first connector (`v0.1.0`)
 
-- [ ] TypeScript monorepo, CI, lint, tests, release automation
-- [ ] `@payenv/core`: unified model, error taxonomy, statuses
-- [ ] Router with the `priority` strategy + capability filtering
-- [ ] Attempt engine with the safe-fallback invariant, fully tested
-- [ ] `@payenv/store-memory`
+- [x] TypeScript monorepo, CI, lint, tests
+- [ ] Release automation
+- [x] `@payenv/core`: unified model, error taxonomy, statuses
+- [x] Router with the `priority` strategy + capability filtering
+- [x] Attempt engine with the safe-fallback invariant, fully tested
+- [x] In-memory store (built into `@payenv/core`)
 - [ ] `@payenv/connector-fedapay` (collect mobile money, status, webhooks)
 - [ ] Getting-started guide and one runnable example
 
