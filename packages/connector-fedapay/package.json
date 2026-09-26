@@ -1,0 +1,53 @@
+{
+  "name": "@payenv/connector-fedapay",
+  "version": "0.0.0",
+  "description": "FedaPay connector for Payenv (mobile money in Benin: MTN, Moov, Celtiis).",
+  "license": "Apache-2.0",
+  "author": "Jules Mahounou (https://github.com/jules-mahounou)",
+  "homepage": "https://github.com/payenv-dev/payenv/tree/main/packages/connector-fedapay#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/payenv-dev/payenv.git",
+    "directory": "packages/connector-fedapay"
+  },
+  "bugs": "https://github.com/payenv-dev/payenv/issues",
+  "keywords": [
+    "payenv",
+    "fedapay",
+    "mobile-money",
+    "benin",
+    "mtn",
+    "moov",
+    "celtiis"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "QUIRKS.md"
+  ],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "@payenv/core": "workspace:^"
+  },
+  "devDependencies": {
+    "@payenv/core": "workspace:^",
+    "@types/node": "^26.6.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -7,7 +7,7 @@ A connector is an adapter for one payment aggregator. See
 
 | Connector | Region | Collect | Payout | Refund | Webhooks | Status | Maintainer |
 |---|---|---|---|---|---|---|---|
-| FedaPay | Benin / West Africa | — | — | — | — | 🟡 In design (first connector) | TBD |
+| FedaPay | Benin / West Africa | ✅ MTN, Moov, Celtiis | — | — | ✅ Signature | 🟡 In progress | @jules-mahounou |
 | Kkiapay | West Africa | — | — | — | — | ⚪ Planned | — |
 | CinetPay | West & Central Africa | — | — | — | — | ⚪ Planned | — |
 | PayDunya | West Africa | — | — | — | — | ⚪ Planned | — |

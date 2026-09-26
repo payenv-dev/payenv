@@ -4,6 +4,7 @@ import type {
   CollectRequest,
   Connector,
   ProviderResult,
+  StatusQuery,
   StatusResult,
 } from '../src/index.js';
 
@@ -11,11 +12,11 @@ type CollectBehavior = (
   request: CollectRequest,
   context: AttemptContext,
 ) => Promise<ProviderResult>;
-type StatusBehavior = (reference: string) => Promise<StatusResult>;
+type StatusBehavior = (query: StatusQuery) => Promise<StatusResult>;
 
 export interface FakeConnector extends Connector {
   collectCalls: AttemptContext[];
-  statusCalls: string[];
+  statusCalls: StatusQuery[];
 }
 
 export const MTN_BJ_XOF: Capability = {
@@ -42,8 +43,8 @@ export function fakeConnector(
       return collect(request, context);
     },
     async getStatus(query) {
-      connector.statusCalls.push(query.reference);
-      return getStatus(query.reference);
+      connector.statusCalls.push(query);
+      return getStatus(query);
     },
   };
   return connector;
