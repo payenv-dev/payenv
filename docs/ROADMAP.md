@@ -19,7 +19,8 @@
 - [x] Router with the `priority` strategy + capability filtering
 - [x] Attempt engine with the safe-fallback invariant, fully tested
 - [x] In-memory store (built into `@payenv/core`)
-- [ ] `@payenv/connector-fedapay` (collect mobile money, status, webhooks)
+- [x] `@payenv/connector-fedapay` (collect mobile money, status, webhook signature)
+- [ ] FedaPay: verify the open points of `QUIRKS.md` in the sandbox
 - [ ] Getting-started guide and one runnable example
 
 ## Phase 2 — Real fallback (`v0.2.0`)
@@ -43,8 +44,19 @@
 - [ ] At least 6 stable connectors with named maintainers
 - [ ] Documentation website
 
+## Next ecosystem: PHP & Laravel (after `v0.2.0`)
+
+Laravel is the most used back-end framework among our target developers after
+JavaScript. Once the model is proven by 2–3 connectors:
+
+- [ ] Language-neutral specification + shared JSON test scenarios (both implementations
+      must pass the same double-charge scenarios)
+- [ ] `payenv/core` — native PHP port of the model and the attempt engine
+- [ ] `payenv/laravel` — config file, facade, Eloquent store, webhook route, events,
+      artisan command to reconcile `unknown` payments
+
 ## Later
 
 - Optional self-hosted server mode (HTTP API) built on the same core
-- SDKs in other languages (PHP, Python, Go, Java/Kotlin, Dart)
+- SDKs in other languages (Python, Go, Java/Kotlin, Dart)
 - Reconciliation tooling

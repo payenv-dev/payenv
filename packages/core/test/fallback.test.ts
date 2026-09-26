@@ -167,6 +167,25 @@ describe('ambiguous attempts (double-charge protection)', () => {
     expect(b.collectCalls).toHaveLength(0);
   });
 
+  it('checks the status by provider ref reported before the call timed out', async () => {
+    const a = fakeConnector(
+      'a',
+      (_request, context) => {
+        context.reportProviderRef('tx_42');
+        return new Promise(() => {});
+      },
+      async (query) =>
+        query.providerRef === 'tx_42' ? { found: true, status: 'pending' } : { found: false },
+    );
+    const b = fakeConnector('b', pending);
+    const payment = await createPayenv({ connectors: [a, b], ...fast }).collect(mtnRequest());
+
+    expect(a.statusCalls[0]?.providerRef).toBe('tx_42');
+    expect(payment.status).toBe('pending');
+    expect(payment.providerRef).toBe('tx_42');
+    expect(b.collectCalls).toHaveLength(0);
+  });
+
   it('never starts a new attempt while a previous one could still succeed (randomized)', async () => {
     // `proven` tells, independently of the engine, whether the provider proved that
     // no money moved. The engine's own labels are deliberately not trusted here.

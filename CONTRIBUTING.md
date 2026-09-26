@@ -71,9 +71,13 @@ Layout:
 
 ```
 packages/
-  core/          @payenv/core — model, router, attempt engine (zero runtime dependencies)
+  core/                @payenv/core — model, router, attempt engine (zero runtime dependencies)
     src/
     test/
+  connector-fedapay/   @payenv/connector-fedapay
 ```
+
+Sandbox tests are opt-in: copy `.env.example` to `.env` (git-ignored) and fill in
+**sandbox** credentials. Without them, those tests are skipped.
 
 The stack is TypeScript 7 (`tsc`), Vitest for tests, and Biome for lint and format.
