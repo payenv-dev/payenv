@@ -1,0 +1,42 @@
+{
+  "name": "@payenv/core",
+  "version": "0.0.0",
+  "description": "Payenv core: unified payment model, router, and safe-fallback attempt engine.",
+  "license": "Apache-2.0",
+  "author": "Jules Mahounou (https://github.com/jules-mahounou)",
+  "homepage": "https://github.com/payenv-dev/payenv#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/payenv-dev/payenv.git",
+    "directory": "packages/core"
+  },
+  "bugs": "https://github.com/payenv-dev/payenv/issues",
+  "keywords": [
+    "payments",
+    "payment-orchestration",
+    "mobile-money",
+    "fallback"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
