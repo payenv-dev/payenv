@@ -9,6 +9,10 @@ Before `1.0.0`, minor versions may contain breaking changes.
 ## [Unreleased]
 
 ### Added
+- 2026-09-26 — `@payenv/connector-fedapay`: mobile money collections in Benin (MTN,
+  Moov, Celtiis), status lookup, webhook signature verification, sandbox tests (opt-in).
+- 2026-09-26 — `@payenv/core`: `AttemptContext.reportProviderRef`, so an attempt
+  that times out after the provider created the transaction can still be resolved.
 - 2026-09-26 — `@payenv/core`: money model (integer minor units, ISO 4217 exponents),
   payment methods, unified statuses, error taxonomy with retry classes, connector and
   capability interfaces, capability-aware router with the `priority` strategy, the
