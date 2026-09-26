@@ -1,0 +1,39 @@
+name: 🐛 Bug report
+description: Something doesn't work as expected
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ⚠️ Never paste real API keys, webhook secrets, or customer personal data.
+  - type: input
+    id: version
+    attributes:
+      label: Payenv version / package
+      placeholder: "@payenv/core 0.1.0, @payenv/connector-fedapay 0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: connector
+    attributes:
+      label: Connector(s) involved
+      placeholder: fedapay
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: dropdown
+    id: money
+    attributes:
+      label: Could this cause a double charge or a lost payment?
+      options: ["No", "Not sure", "Yes — please treat as urgent"]
+    validations:
+      required: true
