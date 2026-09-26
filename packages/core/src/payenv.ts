@@ -133,6 +133,10 @@ export function createPayenv(options: PayenvOptions): Payenv {
   ): Promise<Decision> {
     const controller = new AbortController();
     const query: StatusQuery = { operation: 'collect', reference: attempt.reference };
+    const recordProviderRef = (providerRef: string) => {
+      attempt.providerRef = providerRef;
+      query.providerRef = providerRef;
+    };
     let classification: Classification;
     try {
       const result = await withTimeout(
@@ -142,14 +146,12 @@ export function createPayenv(options: PayenvOptions): Payenv {
           reference: attempt.reference,
           idempotencyKey: attempt.id,
           signal: controller.signal,
+          reportProviderRef: recordProviderRef,
         }),
         attemptTimeoutMs,
         controller,
       );
-      if (result.providerRef !== undefined) {
-        attempt.providerRef = result.providerRef;
-        query.providerRef = result.providerRef;
-      }
+      if (result.providerRef !== undefined) recordProviderRef(result.providerRef);
       classification = classify(result, connector);
     } catch (thrown) {
       const error = toPayenvError(connector, thrown);

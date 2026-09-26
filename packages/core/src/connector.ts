@@ -46,7 +46,12 @@ export type NextAction =
   | { type: 'redirect'; url: string }
   | { type: 'customer_confirmation'; channel?: 'ussd' | 'sms' | 'app'; message?: string };
 
-/** Result of a provider call, normalized by the connector. */
+/**
+ * Result of a provider call, normalized by the connector.
+ *
+ * When the outcome is uncertain but the provider's transaction id is known, return
+ * `{ status: 'unknown', providerRef, error }` rather than throwing.
+ */
 export interface ProviderResult {
   status: PaymentStatus;
   /** The provider's identifier for this transaction. */
@@ -78,6 +83,12 @@ export interface AttemptContext {
   idempotencyKey: string;
   /** Aborted when the attempt times out. Pass it to `fetch`. */
   signal: AbortSignal;
+  /**
+   * Reports the provider's transaction id as soon as it is known, before the call
+   * that could move money. If that call then times out, Payenv can still check
+   * the status with the provider instead of leaving the payment `unknown`.
+   */
+  reportProviderRef(providerRef: string): void;
 }
 
 export interface StatusQuery {
