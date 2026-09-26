@@ -57,5 +57,23 @@ license explicitly allows it.
 
 ## Development setup
 
-*Coming with Phase 1 (see [ROADMAP.md](docs/ROADMAP.md)).* The planned stack is
-TypeScript, with a monorepo and a zero-dependency core built on `fetch`.
+Requirements: Node.js 20.19+ and [pnpm](https://pnpm.io) 9.
+
+```sh
+pnpm install
+pnpm check      # lint + typecheck + tests
+pnpm test:watch # tests in watch mode
+pnpm format     # auto-format with Biome
+pnpm build      # compile every package to dist/
+```
+
+Layout:
+
+```
+packages/
+  core/          @payenv/core — model, router, attempt engine (zero runtime dependencies)
+    src/
+    test/
+```
+
+The stack is TypeScript 7 (`tsc`), Vitest for tests, and Biome for lint and format.

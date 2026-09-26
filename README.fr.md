@@ -4,7 +4,7 @@
 
 🇬🇧 [Read in English](README.md) — *la version anglaise fait référence.*
 
-**Statut :** 🌱 Conception — aucune version utilisable pour l'instant. Démarré le **26/09/2026**.
+**Statut :** 🌱 Début du développement — le moteur existe, pas encore de connecteur ni de version publiée. Démarré le **26/09/2026**.
 **Licence :** [Apache 2.0](LICENSE) — gratuit pour un usage personnel et commercial, pour toujours.
 
 ---

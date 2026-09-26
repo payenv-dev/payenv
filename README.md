@@ -4,7 +4,7 @@
 
 🇫🇷 [Lire en français](README.fr.md)
 
-**Status:** 🌱 Early design — no usable release yet. Started on **2026-09-26**.
+**Status:** 🌱 Early development — the core engine exists, no connector or release yet. Started on **2026-09-26**.
 **License:** [Apache 2.0](LICENSE) — free for personal and commercial use, forever.
 
 ---
