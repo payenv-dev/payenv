@@ -9,9 +9,8 @@ reports very seriously.
 
 Report privately through one of these channels:
 
-- GitHub → *Security* tab → **Report a vulnerability** (private advisory), once the
-  repository is public
-- Email: **security@payenv.dev** *(TODO: replace with a real, monitored address)*
+- GitHub → *Security* tab → **Report a vulnerability** (private advisory) — preferred
+- Email: **payenv.project@gmail.com** (subject: `[SECURITY]`)
 
 Please include:
 - A description of the issue and its impact (e.g. double charge, webhook forgery,
