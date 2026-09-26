@@ -6,9 +6,9 @@
 
 - [x] Project idea, vision, license (Apache 2.0)
 - [x] Initial documentation: architecture draft, contributing, security, governance
-- [ ] Create the GitHub organization and repository
-- [ ] Reserve package names (npm `payenv` / `@payenv` scope)
-- [ ] Set up contact addresses (security, conduct)
+- [x] Create the GitHub organization and repository (`payenv-dev/payenv`)
+- [x] Reserve the npm `@payenv` scope (all packages are published under it)
+- [x] Set up a contact address for security and conduct reports
 - [ ] Open discussions on the architecture draft
 
 ## Phase 1 — Core + first connector (`v0.1.0`)
