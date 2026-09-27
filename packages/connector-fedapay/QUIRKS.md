@@ -31,22 +31,28 @@ What differs from what you would expect when reading the FedaPay documentation.
 
 ## ✅ Verified in the sandbox (2026-09-27)
 
-- Authentication with a sandbox key, transaction creation (with an E.164 phone number
-  such as `+229…` in `customer.phone_number.number`), and token generation work.
-- **Operator activation also applies to the sandbox**: an operator that is not
-  activated fails at the push step with HTTP 400 "Opération non autorisée". Payenv
-  correctly maps it to `ROUTE_UNSUPPORTED` (safe to fall back).
+- **The sandbox has no per-operator test servers anymore.** MTN, Moov, etc. were removed;
+  every push goes to the single `momo_test` mode (`POST /v1/momo_test` with the token).
+  Pushing to `/mtn_open` in the sandbox fails with HTTP 400 "Opération non autorisée".
+  The connector therefore maps every network to `momo_test` when `environment` is
+  `sandbox`, so application code is identical in both environments.
+  Source: https://docs.fedapay.com/fr/integration-api/sending-requests#serveur-de-test
+- **Test numbers**: `64000001` and `66000001` succeed; any other number simulates a
+  failed payment. Sent as E.164 (`+22964000001`), they are accepted end to end.
+- **Statuses observed**: a successful payment settles as succeeded; a failed one as
+  `declined` → `failed` / `CUSTOMER_DECLINED`.
+- Authentication with a sandbox key, transaction creation, token generation, and status
+  lookup by transaction id all work as implemented.
 
-## 🔍 To verify in the sandbox
+## 🔍 Still to verify
 
-- The full list of transaction statuses. Mapped today: `pending`, `approved`,
+- The full list of live transaction statuses. Mapped today: `pending`, `approved`,
   `transferred`, `refunded` → succeeded, `declined` → failed, `canceled`, `expired`.
   Unknown values map to `unknown` (safe).
-- Whether the push itself accepts the E.164 phone format (creation does).
+- That live pushes accept the E.164 phone format too (the sandbox does).
 - Whether a transaction can be looked up by merchant reference. That would let Payenv
   resolve a timeout on the *create* call. Today that case ends as `unknown` (safe but
   not ideal).
-- Sandbox test phone numbers for each operator.
 
 ## Safety decisions
 

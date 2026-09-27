@@ -73,15 +73,19 @@ function context(): AttemptContext & { reported: string[] } {
 describe('fedapay connector — collect', () => {
   it('creates the transaction, gets a token, then sends the push', async () => {
     const server = fakeFedaPay(happyRoutes);
-    const connector = fedapay({ secretKey: 'sk_sandbox_test', fetch: server.fetch });
+    const connector = fedapay({
+      secretKey: 'sk_live_test',
+      environment: 'live',
+      fetch: server.fetch,
+    });
     const ctx = context();
 
     const result = await connector.collect(request(), ctx);
 
     expect(server.calls.map((call) => `${call.method} ${call.url}`)).toEqual([
-      'POST https://sandbox-api.fedapay.com/v1/transactions',
-      'POST https://sandbox-api.fedapay.com/v1/transactions/1234/token',
-      'POST https://sandbox-api.fedapay.com/v1/mtn_open',
+      'POST https://api.fedapay.com/v1/transactions',
+      'POST https://api.fedapay.com/v1/transactions/1234/token',
+      'POST https://api.fedapay.com/v1/mtn_open',
     ]);
     expect(server.calls[0]?.body).toEqual({
       description: 'Payment att_1',
@@ -95,7 +99,7 @@ describe('fedapay connector — collect', () => {
       },
     });
     expect(server.calls[2]?.body).toEqual({ token: 'jwt_token' });
-    expect(server.calls[0]?.headers.Authorization).toBe('Bearer sk_sandbox_test');
+    expect(server.calls[0]?.headers.Authorization).toBe('Bearer sk_live_test');
     expect(result).toMatchObject({
       status: 'pending',
       providerRef: '1234',
@@ -104,13 +108,26 @@ describe('fedapay connector — collect', () => {
     expect(ctx.reported).toEqual(['1234']);
   });
 
-  it('uses the live API in live mode', async () => {
-    const server = fakeFedaPay(happyRoutes);
-    await fedapay({ secretKey: 'sk', environment: 'live', fetch: server.fetch }).collect(
-      request(),
-      context(),
+  it('uses the sandbox by default and sends every push to momo_test', async () => {
+    const server = fakeFedaPay({
+      ...happyRoutes,
+      'POST /momo_test': () => ({
+        status: 200,
+        json: { 'v1/payment_intent': { status: 'pending' } },
+      }),
+    });
+    const connector = fedapay({ secretKey: 'sk', fetch: server.fetch });
+    await connector.collect(request(), context());
+
+    expect(server.calls.map((call) => call.url)).toEqual([
+      'https://sandbox-api.fedapay.com/v1/transactions',
+      'https://sandbox-api.fedapay.com/v1/transactions/1234/token',
+      'https://sandbox-api.fedapay.com/v1/momo_test',
+    ]);
+    // Same capabilities as live: application code doesn't change between environments.
+    expect(connector.capabilities()).toEqual(
+      fedapay({ secretKey: 'sk', environment: 'live' }).capabilities(),
     );
-    expect(server.calls[0]?.url).toBe('https://api.fedapay.com/v1/transactions');
   });
 
   it('maps Payenv networks to FedaPay slugs', async () => {
@@ -118,7 +135,7 @@ describe('fedapay connector — collect', () => {
       ...happyRoutes,
       'POST /sbin': () => ({ status: 200, json: { 'v1/payment_intent': { status: 'pending' } } }),
     });
-    await fedapay({ secretKey: 'sk', fetch: server.fetch }).collect(
+    await fedapay({ secretKey: 'sk', environment: 'live', fetch: server.fetch }).collect(
       request({
         method: { type: 'mobile_money', network: 'celtiis', country: 'BJ', phone: '+22990000000' },
       }),
@@ -149,7 +166,10 @@ describe('fedapay connector — errors before the push are safe to fall back', (
   ])('HTTP %i on create → %s', async (status, code) => {
     const server = fakeFedaPay({ 'POST /transactions': () => ({ status, json: {} }) });
     await expect(
-      fedapay({ secretKey: 'sk', fetch: server.fetch }).collect(request(), context()),
+      fedapay({ secretKey: 'sk', environment: 'live', fetch: server.fetch }).collect(
+        request(),
+        context(),
+      ),
     ).rejects.toMatchObject({ code, retryClass: 'safe_to_fallback' });
   });
 
@@ -159,7 +179,10 @@ describe('fedapay connector — errors before the push are safe to fall back', (
       'POST /transactions/1234/token': () => Promise.reject(new TypeError('fetch failed')),
     });
     await expect(
-      fedapay({ secretKey: 'sk', fetch: server.fetch }).collect(request(), context()),
+      fedapay({ secretKey: 'sk', environment: 'live', fetch: server.fetch }).collect(
+        request(),
+        context(),
+      ),
     ).rejects.toMatchObject({ code: 'PROVIDER_UNAVAILABLE', retryClass: 'safe_to_fallback' });
   });
 
@@ -169,7 +192,10 @@ describe('fedapay connector — errors before the push are safe to fall back', (
       'POST /mtn_open': () => ({ status: 400, json: { message: 'Opération non autorisée' } }),
     });
     await expect(
-      fedapay({ secretKey: 'sk', fetch: server.fetch }).collect(request(), context()),
+      fedapay({ secretKey: 'sk', environment: 'live', fetch: server.fetch }).collect(
+        request(),
+        context(),
+      ),
     ).rejects.toMatchObject({ code: 'ROUTE_UNSUPPORTED', retryClass: 'safe_to_fallback' });
   });
 });
@@ -180,10 +206,11 @@ describe('fedapay connector — errors during the push are ambiguous', () => {
     ['network failure', () => Promise.reject(new TypeError('socket hang up'))],
   ] as const)('%s on push → unknown with the transaction id', async (_label, handler) => {
     const server = fakeFedaPay({ ...happyRoutes, 'POST /mtn_open': handler as Handler });
-    const result = await fedapay({ secretKey: 'sk', fetch: server.fetch }).collect(
-      request(),
-      context(),
-    );
+    const result = await fedapay({
+      secretKey: 'sk',
+      environment: 'live',
+      fetch: server.fetch,
+    }).collect(request(), context());
     expect(result.status).toBe('unknown');
     expect(result.providerRef).toBe('1234');
     expect(result.error?.retryClass).toBe('ambiguous');
@@ -205,7 +232,11 @@ describe('fedapay connector — status', () => {
         json: { 'v1/transaction': { id: 1234, status: fedapayStatus } },
       }),
     });
-    const result = await fedapay({ secretKey: 'sk', fetch: server.fetch }).getStatus(
+    const result = await fedapay({
+      secretKey: 'sk',
+      environment: 'live',
+      fetch: server.fetch,
+    }).getStatus(
       { operation: 'collect', reference: 'att_1', providerRef: '1234' },
       { signal: new AbortController().signal },
     );
@@ -216,7 +247,7 @@ describe('fedapay connector — status', () => {
   it('never claims "not found" without a transaction id', async () => {
     const server = fakeFedaPay({});
     await expect(
-      fedapay({ secretKey: 'sk', fetch: server.fetch }).getStatus(
+      fedapay({ secretKey: 'sk', environment: 'live', fetch: server.fetch }).getStatus(
         { operation: 'collect', reference: 'att_1' },
         { signal: new AbortController().signal },
       ),
@@ -246,7 +277,7 @@ describe('fedapay connector — inside Payenv', () => {
     const server = fakeFedaPay({ 'POST /transactions': () => ({ status: 503, json: {} }) });
     const other = backup();
     const payenv = createPayenv({
-      connectors: [fedapay({ secretKey: 'sk', fetch: server.fetch }), other],
+      connectors: [fedapay({ secretKey: 'sk', environment: 'live', fetch: server.fetch }), other],
       statusCheckDelaysMs: [0],
     });
 
@@ -267,7 +298,7 @@ describe('fedapay connector — inside Payenv', () => {
     });
     const other = backup();
     const payenv = createPayenv({
-      connectors: [fedapay({ secretKey: 'sk', fetch: server.fetch }), other],
+      connectors: [fedapay({ secretKey: 'sk', environment: 'live', fetch: server.fetch }), other],
       statusCheckDelaysMs: [0],
     });
 
