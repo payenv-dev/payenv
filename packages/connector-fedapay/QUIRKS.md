@@ -29,12 +29,20 @@ What differs from what you would expect when reading the FedaPay documentation.
 - **Payouts** are created with `POST /v1/payouts`, then started with
   `PUT /v1/payouts/start` and body `{ "payouts": [{ "id": ... }] }`. (Not implemented yet.)
 
+## ✅ Verified in the sandbox (2026-09-27)
+
+- Authentication with a sandbox key, transaction creation (with an E.164 phone number
+  such as `+229…` in `customer.phone_number.number`), and token generation work.
+- **Operator activation also applies to the sandbox**: an operator that is not
+  activated fails at the push step with HTTP 400 "Opération non autorisée". Payenv
+  correctly maps it to `ROUTE_UNSUPPORTED` (safe to fall back).
+
 ## 🔍 To verify in the sandbox
 
 - The full list of transaction statuses. Mapped today: `pending`, `approved`,
   `transferred`, `refunded` → succeeded, `declined` → failed, `canceled`, `expired`.
   Unknown values map to `unknown` (safe).
-- The phone number format FedaPay expects (E.164 `+229…` is sent today).
+- Whether the push itself accepts the E.164 phone format (creation does).
 - Whether a transaction can be looked up by merchant reference. That would let Payenv
   resolve a timeout on the *create* call. Today that case ends as `unknown` (safe but
   not ideal).
