@@ -319,6 +319,7 @@ export function createPayenv(options: PayenvOptions): Payenv {
         { connectorId: connector.id },
       ).toJSON();
       attempt.status = 'failed';
+      attempt.outcome = 'failed';
       attempt.error = error;
       payment.status = 'failed';
       payment.error = error;
@@ -326,6 +327,14 @@ export function createPayenv(options: PayenvOptions): Payenv {
       const next = status.status === 'created' ? 'pending' : status.status;
       if (!canTransition(payment.status, next)) return payment;
       attempt.status = next;
+      // Keep the attempt's conclusion consistent with what the provider now reports.
+      if (next === 'failed' || next === 'canceled' || next === 'expired') {
+        attempt.outcome = 'failed';
+      } else if (next !== 'unknown') {
+        attempt.outcome = 'accepted';
+        // A timeout recorded while the outcome was unknown no longer describes the payment.
+        delete payment.error;
+      }
       payment.status = next;
       if (status.providerRef !== undefined) {
         attempt.providerRef = status.providerRef;

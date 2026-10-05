@@ -1,0 +1,18 @@
+{
+  "name": "@payenv/example-fedapay-demo",
+  "private": true,
+  "description": "Runnable demo: collect a FedaPay mobile money payment with Payenv.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file-if-exists=../../.env server.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@payenv/connector-fedapay": "workspace:*",
+    "@payenv/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0"
+  }
+}

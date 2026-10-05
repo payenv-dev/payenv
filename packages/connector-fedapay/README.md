@@ -41,10 +41,16 @@ const valid = await verifyFedaPayWebhook(
 | Option | Default | Description |
 |---|---|---|
 | `secretKey` | — | FedaPay secret key. Required. |
-| `environment` | `'sandbox'` | `'sandbox'` or `'live'`. |
-| `operators` | Benin: MTN, Moov, Celtiis | Operators to expose, per country: `{ BJ: { mtn: 'mtn_open' } }`. List only the operators activated on your merchant account. |
+| `environment` | `'sandbox'` | `'sandbox'` or `'live'`. In the sandbox, every network is sent to FedaPay's `momo_test` mode. |
+| `operators` | Benin: MTN, Moov, Celtiis (`momo_test` in the sandbox) | Operators to expose, per country: `{ BJ: { mtn: 'mtn_open' } }`. List only the operators activated on your merchant account. |
 | `id` | `'fedapay'` | Connector id, e.g. to register two FedaPay accounts. |
 | `fetch` | global `fetch` | Custom fetch implementation. |
+
+## Testing in the sandbox
+
+The FedaPay sandbox simulates every operator with a single `momo_test` mode. Use
+`+22964000001` or `+22966000001` for a successful payment; any other number simulates a
+failure. Your code stays the same: just switch `environment` to `'live'` in production.
 
 ## Safety
 

@@ -29,16 +29,30 @@ What differs from what you would expect when reading the FedaPay documentation.
 - **Payouts** are created with `POST /v1/payouts`, then started with
   `PUT /v1/payouts/start` and body `{ "payouts": [{ "id": ... }] }`. (Not implemented yet.)
 
-## 🔍 To verify in the sandbox
+## ✅ Verified in the sandbox (2026-09-27)
 
-- The full list of transaction statuses. Mapped today: `pending`, `approved`,
+- **The sandbox has no per-operator test servers anymore.** MTN, Moov, etc. were removed;
+  every push goes to the single `momo_test` mode (`POST /v1/momo_test` with the token).
+  Pushing to `/mtn_open` in the sandbox fails with HTTP 400 "Opération non autorisée".
+  The connector therefore maps every network to `momo_test` when `environment` is
+  `sandbox`, so application code is identical in both environments.
+  Source: https://docs.fedapay.com/fr/integration-api/sending-requests#serveur-de-test
+- **Test numbers**: `64000001` and `66000001` succeed; any other number simulates a
+  failed payment. Sent as E.164 (`+22964000001`), they are accepted end to end.
+- **Statuses observed**: a successful payment settles as succeeded; a failed one as
+  `declined` → `failed` / `CUSTOMER_DECLINED`.
+- Authentication with a sandbox key, transaction creation, token generation, and status
+  lookup by transaction id all work as implemented.
+
+## 🔍 Still to verify
+
+- The full list of live transaction statuses. Mapped today: `pending`, `approved`,
   `transferred`, `refunded` → succeeded, `declined` → failed, `canceled`, `expired`.
   Unknown values map to `unknown` (safe).
-- The phone number format FedaPay expects (E.164 `+229…` is sent today).
+- That live pushes accept the E.164 phone format too (the sandbox does).
 - Whether a transaction can be looked up by merchant reference. That would let Payenv
   resolve a timeout on the *create* call. Today that case ends as `unknown` (safe but
   not ideal).
-- Sandbox test phone numbers for each operator.
 
 ## Safety decisions
 
