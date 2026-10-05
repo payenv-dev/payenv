@@ -48,6 +48,11 @@ const payment = await payenv.collect({
 //   sur le suivant uniquement s'il a échoué *avant* tout mouvement d'argent.
 ```
 
+## Essayer
+
+Une démo prête à lancer encaisse un vrai paiement sandbox via FedaPay en une minute :
+voir [examples/fedapay-demo](examples/fedapay-demo).
+
 ## Principes
 
 1. **Bibliothèque d'abord.** Payenv tourne *dans votre application*. Aucun service

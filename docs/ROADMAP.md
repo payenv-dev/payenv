@@ -20,8 +20,9 @@
 - [x] Attempt engine with the safe-fallback invariant, fully tested
 - [x] In-memory store (built into `@payenv/core`)
 - [x] `@payenv/connector-fedapay` (collect mobile money, status, webhook signature)
-- [ ] FedaPay: verify the open points of `QUIRKS.md` in the sandbox
-- [ ] Getting-started guide and one runnable example
+- [x] FedaPay: verified end to end in the sandbox (success and failure)
+- [x] One runnable example (`examples/fedapay-demo`)
+- [ ] Getting-started guide
 
 ## Phase 2 — Real fallback (`v0.2.0`)
 

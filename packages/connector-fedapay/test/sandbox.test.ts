@@ -8,7 +8,7 @@ const secretKey = process.env.FEDAPAY_SANDBOX_SECRET_KEY;
 
 // FedaPay sandbox (`momo_test` mode): 64000001 and 66000001 succeed, any other
 // number simulates a failed payment. https://docs.fedapay.com/fr/integration-api/sending-requests
-const SUCCESS_PHONE = process.env.FEDAPAY_SANDBOX_PHONE || '+22964000001';
+const SUCCESS_PHONE = '+22964000001';
 const FAILURE_PHONE = '+22964000009';
 
 async function collect(payenv: Payenv, phone: string): Promise<Payment> {

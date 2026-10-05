@@ -9,6 +9,10 @@ Before `1.0.0`, minor versions may contain breaking changes.
 ## [Unreleased]
 
 ### Added
+- 2026-10-05 — `examples/fedapay-demo`: runnable web demo (`pnpm demo`) collecting a
+  sandbox payment and following its status live.
+- 2026-09-27 — `@payenv/connector-fedapay`: sandbox pushes go to FedaPay's `momo_test`
+  mode; sandbox tests verify success and failure end to end.
 - 2026-09-26 — `@payenv/connector-fedapay`: mobile money collections in Benin (MTN,
   Moov, Celtiis), status lookup, webhook signature verification, sandbox tests (opt-in).
 - 2026-09-26 — `@payenv/core`: `AttemptContext.reportProviderRef`, so an attempt
