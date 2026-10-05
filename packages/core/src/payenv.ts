@@ -44,6 +44,13 @@ export interface Payenv {
   getPayment(idempotencyKey: string): Promise<Payment | undefined>;
   /** Asks the provider for the latest status of a non-terminal payment. */
   refresh(idempotencyKey: string): Promise<Payment>;
+  /**
+   * Links a provider transaction to a payment started in a widget (`nextAction.type ===
+   * 'widget'`), then updates its status. The transaction is first checked with the
+   * provider: it must carry this payment's merchant reference and amount, so a customer
+   * cannot confirm an order with another transaction.
+   */
+  confirm(idempotencyKey: string, providerRef: string): Promise<Payment>;
 }
 
 const DEFAULT_ATTEMPT_TIMEOUT_MS = 30_000;
@@ -175,6 +182,9 @@ export function createPayenv(options: PayenvOptions): Payenv {
         attempt.status = status;
         attempt.outcome = 'accepted';
         if (result.providerRef !== undefined) attempt.providerRef = result.providerRef;
+        if (result.merchantReference !== undefined) {
+          attempt.merchantReference = result.merchantReference;
+        }
         payment.status = status;
         setOptional(payment, 'providerRef', attempt.providerRef);
         setOptional(payment, 'nextAction', result.nextAction);
@@ -287,31 +297,71 @@ export function createPayenv(options: PayenvOptions): Payenv {
     return payment;
   }
 
-  async function refresh(idempotencyKey: string): Promise<Payment> {
+  async function load(idempotencyKey: string) {
     const payment = await store.get(idempotencyKey);
     if (!payment) {
       throw new PayenvError('PAYMENT_NOT_FOUND', `No payment with key "${idempotencyKey}"`);
     }
     const attempt = payment.attempts.at(-1);
-    if (isTerminal(payment.status) || !attempt) return payment;
-
-    const connector = connectors.find((candidate) => candidate.id === attempt.connectorId);
-    if (!connector) {
+    const connector =
+      attempt && connectors.find((candidate) => candidate.id === attempt.connectorId);
+    if (attempt && !connector) {
       throw new PayenvError(
         'INVALID_REQUEST',
-        `Connector "${attempt.connectorId}" is not configured; cannot refresh this payment`,
+        `Connector "${attempt.connectorId}" is not configured; cannot update this payment`,
       );
     }
+    return { payment, attempt, connector };
+  }
 
-    let status: StatusResult;
+  async function lookup(connector: Connector, attempt: Attempt, providerRef?: string) {
+    const query: StatusQuery = { operation: 'collect', reference: attempt.reference };
+    const ref = providerRef ?? attempt.providerRef;
+    if (ref !== undefined) query.providerRef = ref;
     try {
-      const query: StatusQuery = { operation: 'collect', reference: attempt.reference };
-      if (attempt.providerRef !== undefined) query.providerRef = attempt.providerRef;
-      status = await checkStatus(connector, query);
+      return await checkStatus(connector, query);
     } catch (thrown) {
       throw toPayenvError(connector, thrown);
     }
+  }
 
+  /** Applies a provider status to a payment. Returns false if the transition is not allowed. */
+  function applyStatus(
+    payment: Payment,
+    attempt: Attempt,
+    status: Extract<StatusResult, { found: true }>,
+  ): boolean {
+    const next = status.status === 'created' ? 'pending' : status.status;
+    if (!canTransition(payment.status, next)) return false;
+    attempt.status = next;
+    // Keep the attempt's conclusion consistent with what the provider now reports.
+    if (next === 'failed' || next === 'canceled' || next === 'expired') {
+      attempt.outcome = 'failed';
+    } else if (next !== 'unknown') {
+      attempt.outcome = 'accepted';
+      // A timeout recorded while the outcome was unknown no longer describes the payment.
+      delete payment.error;
+    }
+    payment.status = next;
+    if (status.providerRef !== undefined) {
+      attempt.providerRef = status.providerRef;
+      payment.providerRef = status.providerRef;
+    }
+    setOptional(payment, 'nextAction', status.nextAction);
+    if (status.error) {
+      attempt.error = status.error.toJSON();
+      payment.error = attempt.error;
+    }
+    return true;
+  }
+
+  async function refresh(idempotencyKey: string): Promise<Payment> {
+    const { payment, attempt, connector } = await load(idempotencyKey);
+    if (isTerminal(payment.status) || !attempt || !connector) return payment;
+    // A widget payment has nothing to look up until the customer completes it (confirm).
+    if (payment.status === 'requires_action' && attempt.providerRef === undefined) return payment;
+
+    const status = await lookup(connector, attempt);
     if (!status.found) {
       const error = new PayenvError(
         'PAYMENT_NOT_FOUND',
@@ -323,29 +373,70 @@ export function createPayenv(options: PayenvOptions): Payenv {
       attempt.error = error;
       payment.status = 'failed';
       payment.error = error;
-    } else {
-      const next = status.status === 'created' ? 'pending' : status.status;
-      if (!canTransition(payment.status, next)) return payment;
-      attempt.status = next;
-      // Keep the attempt's conclusion consistent with what the provider now reports.
-      if (next === 'failed' || next === 'canceled' || next === 'expired') {
-        attempt.outcome = 'failed';
-      } else if (next !== 'unknown') {
-        attempt.outcome = 'accepted';
-        // A timeout recorded while the outcome was unknown no longer describes the payment.
-        delete payment.error;
-      }
-      payment.status = next;
-      if (status.providerRef !== undefined) {
-        attempt.providerRef = status.providerRef;
-        payment.providerRef = status.providerRef;
-      }
-      setOptional(payment, 'nextAction', status.nextAction);
-      if (status.error) {
-        attempt.error = status.error.toJSON();
-        payment.error = attempt.error;
-      }
+    } else if (!applyStatus(payment, attempt, status)) {
+      return payment;
     }
+    await save(payment);
+    return payment;
+  }
+
+  async function confirm(idempotencyKey: string, providerRef: string): Promise<Payment> {
+    if (typeof providerRef !== 'string' || providerRef === '') {
+      throw new PayenvError('INVALID_REQUEST', 'providerRef must be a non-empty string');
+    }
+    const { payment, attempt, connector } = await load(idempotencyKey);
+    if (!attempt || !connector) {
+      throw new PayenvError('INVALID_REQUEST', 'This payment has no attempt to confirm');
+    }
+    if (attempt.providerRef !== undefined) {
+      // Confirming twice with the same transaction is harmless; another one is not.
+      if (attempt.providerRef === providerRef) return refresh(idempotencyKey);
+      throw new PayenvError(
+        'REFERENCE_MISMATCH',
+        'This payment is already linked to another provider transaction',
+        { connectorId: connector.id },
+      );
+    }
+    if (attempt.merchantReference === undefined) {
+      throw new PayenvError(
+        'INVALID_REQUEST',
+        `Connector "${connector.id}" did not attach a merchant reference; this payment cannot be confirmed`,
+      );
+    }
+
+    const status = await lookup(connector, attempt, providerRef);
+    if (!status.found) {
+      throw new PayenvError(
+        'PAYMENT_NOT_FOUND',
+        `The provider has no transaction "${providerRef}"`,
+        {
+          connectorId: connector.id,
+        },
+      );
+    }
+    // Anti-fraud: the provider transaction must be this payment's, for this amount.
+    if (status.merchantReference !== attempt.merchantReference) {
+      throw new PayenvError(
+        'REFERENCE_MISMATCH',
+        'The provider transaction does not belong to this payment',
+        { connectorId: connector.id },
+      );
+    }
+    if (
+      status.amount === undefined ||
+      status.amount.value !== payment.amount.value ||
+      status.amount.currency !== payment.amount.currency
+    ) {
+      throw new PayenvError(
+        'REFERENCE_MISMATCH',
+        'The provider transaction amount does not match this payment',
+        { connectorId: connector.id },
+      );
+    }
+
+    attempt.providerRef = providerRef;
+    payment.providerRef = providerRef;
+    applyStatus(payment, attempt, { ...status, providerRef });
     await save(payment);
     return payment;
   }
@@ -354,6 +445,7 @@ export function createPayenv(options: PayenvOptions): Payenv {
     collect,
     getPayment: (idempotencyKey) => store.get(idempotencyKey),
     refresh,
+    confirm,
   };
 }
 
