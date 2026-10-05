@@ -14,7 +14,7 @@
 ## Phase 1 — Core + first connector (`v0.1.0`)
 
 - [x] TypeScript monorepo, CI, lint, tests
-- [ ] Release automation
+- [x] Release automation (Changesets + npm trusted publishing)
 - [x] `@payenv/core`: unified model, error taxonomy, statuses
 - [x] Router with the `priority` strategy + capability filtering
 - [x] Attempt engine with the safe-fallback invariant, fully tested
@@ -22,7 +22,8 @@
 - [x] `@payenv/connector-fedapay` (collect mobile money, status, webhook signature)
 - [x] FedaPay: verified end to end in the sandbox (success and failure)
 - [x] One runnable example (`examples/fedapay-demo`)
-- [ ] Getting-started guide
+- [x] Getting-started guide
+- [ ] Publish `0.1.0` to npm
 
 ## Phase 2 — Real fallback (`v0.2.0`)
 
