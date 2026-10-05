@@ -15,7 +15,8 @@
     "test:watch": "vitest",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "check": "pnpm lint && pnpm typecheck && pnpm test"
+    "check": "pnpm lint && pnpm typecheck && pnpm test",
+    "demo": "pnpm --filter \"./packages/*\" build && pnpm --filter @payenv/example-fedapay-demo start"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",

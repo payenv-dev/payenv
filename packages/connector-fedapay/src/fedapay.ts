@@ -26,14 +26,24 @@ export const DEFAULT_OPERATORS: FedaPayOperators = {
   BJ: { mtn: 'mtn_open', moov: 'moov', celtiis: 'sbin' },
 };
 
+/**
+ * The FedaPay sandbox no longer has per-operator test servers: every push goes to the
+ * single `momo_test` mode. Test numbers 64000001 and 66000001 succeed; any other
+ * number simulates a failed payment.
+ */
+export const DEFAULT_SANDBOX_OPERATORS: FedaPayOperators = {
+  BJ: { mtn: 'momo_test', moov: 'momo_test', celtiis: 'momo_test' },
+};
+
 export interface FedaPayOptions {
   /** Secret API key (sandbox or live). Keep it in an environment variable. */
   secretKey: string;
   /** Defaults to `sandbox`. */
   environment?: FedaPayEnvironment;
   /**
-   * Operators to expose, per country. Defaults to {@link DEFAULT_OPERATORS}. Only list
-   * operators activated on your FedaPay merchant account (Dashboard → Payment methods).
+   * Operators to expose, per country. Defaults to {@link DEFAULT_OPERATORS} in live mode
+   * and {@link DEFAULT_SANDBOX_OPERATORS} in the sandbox. Only list operators activated
+   * on your FedaPay merchant account (Dashboard → Payment methods).
    */
   operators?: FedaPayOperators;
   /** Connector id used in routing and payments. Defaults to `fedapay`. */
@@ -67,8 +77,10 @@ export function fedapay(options: FedaPayOptions): Connector {
     throw new PayenvError('INVALID_REQUEST', 'FedaPay secretKey is required');
   }
   const id = options.id ?? 'fedapay';
-  const baseUrl = BASE_URLS[options.environment ?? 'sandbox'];
-  const operators = options.operators ?? DEFAULT_OPERATORS;
+  const environment = options.environment ?? 'sandbox';
+  const baseUrl = BASE_URLS[environment];
+  const operators =
+    options.operators ?? (environment === 'live' ? DEFAULT_OPERATORS : DEFAULT_SANDBOX_OPERATORS);
   const doFetch = options.fetch ?? globalThis.fetch;
 
   const capabilities: Capability[] = Object.entries(operators).map(([country, networks]) => ({

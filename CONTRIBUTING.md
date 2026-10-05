@@ -75,6 +75,8 @@ packages/
     src/
     test/
   connector-fedapay/   @payenv/connector-fedapay
+examples/
+  fedapay-demo/        runnable demo: pnpm demo
 ```
 
 Sandbox tests are opt-in: copy `.env.example` to `.env` (git-ignored) and fill in
