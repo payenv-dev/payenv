@@ -26,6 +26,9 @@ importers:
       '@payenv/connector-fedapay':
         specifier: workspace:*
         version: link:../../packages/connector-fedapay
+      '@payenv/connector-kkiapay':
+        specifier: workspace:*
+        version: link:../../packages/connector-kkiapay
       '@payenv/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -35,6 +38,15 @@ importers:
         version: 24.19.1
 
   packages/connector-fedapay:
+    devDependencies:
+      '@payenv/core':
+        specifier: workspace:^
+        version: link:../core
+      '@types/node':
+        specifier: ^26.6.3
+        version: 26.6.3
+
+  packages/connector-kkiapay:
     devDependencies:
       '@payenv/core':
         specifier: workspace:^

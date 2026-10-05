@@ -166,6 +166,18 @@ Idempotency:
 - Where a provider supports idempotency keys natively, the connector forwards a
   derived key per attempt.
 
+## 4b. Payments started by the customer (widgets)
+
+Some providers (Kkiapay, most checkout-style aggregators) cannot start a payment from the
+server: the customer starts it in the provider's widget. See
+[ADR 0005](adr/0005-customer-started-payments.md).
+
+- Such routes declare `Capability.widget` and are only used when the request lists the
+  widget in `supportedWidgets` (the front end can open it).
+- `collect` returns `requires_action` with `nextAction: { type: 'widget', provider, params }`.
+- `payenv.confirm(key, providerRef)` links the provider transaction after verifying with
+  the provider that it carries this payment's merchant reference and amount.
+
 ## 5. Webhooks
 
 - The app exposes one endpoint (or one per provider) and passes the **raw body**
@@ -197,7 +209,7 @@ The integrator owns the store and its data.
 @payenv/core                 unified model, router, attempt engine, interfaces,
                              and an in-memory store for development and tests
 @payenv/connector-fedapay    one package per connector
-@payenv/connector-kkiapay
+@payenv/connector-kkiapay    payments started in the Kkiapay widget, verified server-side
 @payenv/store-postgres       persistent stores, one package each
 ```
 

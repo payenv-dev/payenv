@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@payenv/connector-fedapay": "workspace:*",
-    "@payenv/core": "workspace:*"
+    "@payenv/core": "workspace:*",
+    "@payenv/connector-kkiapay": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.0.0"
