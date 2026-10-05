@@ -44,12 +44,45 @@ What differs from what you would expect when reading the FedaPay documentation.
 - Authentication with a sandbox key, transaction creation, token generation, and status
   lookup by transaction id all work as implemented.
 
+## ✅ Verified live (2026-10-05)
+
+- Live pushes work on `/mtn_open` (MTN) and `/sbin` (Celtiis): the USSD prompt reaches
+  the phone.
+- Benin's 10-digit numbers in E.164 (`+22901…`) are accepted.
+- **Transactions carry a `last_error_code`** with the real reason, e.g.
+  `INSUFFICIENT_FUND_ERROR` on a canceled MTN payment. The connector maps it
+  (→ `INSUFFICIENT_FUNDS`) and always exposes it as `error.providerCode`.
+- **A customer canceling the USSD prompt on Celtiis does not end the transaction**:
+  FedaPay keeps it `pending` and records `last_error_code: "API_ERROR"`. Its
+  `last_error_message` is the operator's raw SOAP answer (Huawei CPS): the request
+  succeeded and the operator still reports `TransactionStatus: "Initiated"`. In other
+  words, the cancellation was not propagated. Payenv keeps the payment `pending` (never
+  guessed) and exposes the reason (`UNKNOWN_ERROR` + `providerCode: "API_ERROR"`, raw
+  dump in `error.raw`). See "Payments stuck in pending" in the README.
+- **Webhook shape**: `{ name, object: "transaction", object_id, account, entity }`, where
+  `entity` is the full transaction (with `status` and `last_error_code`). Events seen:
+  `transaction.created`, `transaction.canceled`. The connector derives the status from
+  `entity`, not from the event name, so unknown event names still work.
+  ⚠️ Webhooks contain the merchant account details and the payer's phone number (inside
+  `last_error_message`): never log them raw.
+- **MTN's reason behind `INSUFFICIENT_FUND_ERROR`** is
+  `LOW_BALANCE_OR_PAYEE_LIMIT_REACHED_OR_NOT_ALLOWED`: low balance *or* a limit *or* not
+  allowed. Payenv's message says so.
+- **FedaPay schedules an expiration** for pending transactions (`metadata.expire_schedule_jobid`,
+  `expired_at` field). Payenv maps `expired` to `CUSTOMER_TIMEOUT`.
+- Fees may be charged to the customer: a 100 XOF payment showed `fees: 2` and
+  `amount_debited: 102`.
+- Transactions have a `merchant_reference` field. Whether it can be set on creation and
+  used for lookups is still to verify (see below).
+
 ## 🔍 Still to verify
 
 - The full list of live transaction statuses. Mapped today: `pending`, `approved`,
   `transferred`, `refunded` → succeeded, `declined` → failed, `canceled`, `expired`.
   Unknown values map to `unknown` (safe).
-- That live pushes accept the E.164 phone format too (the sandbox does).
+- After how long FedaPay's scheduled expiration turns a stuck `pending` into `expired`.
+- The other `last_error_code` values (only `INSUFFICIENT_FUND_ERROR` and `API_ERROR` are
+  mapped; others are exposed as `providerCode` with a default code).
 - Whether a transaction can be looked up by merchant reference. That would let Payenv
   resolve a timeout on the *create* call. Today that case ends as `unknown` (safe but
   not ideal).

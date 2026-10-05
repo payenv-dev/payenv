@@ -57,6 +57,8 @@ export interface PayenvErrorOptions {
   retryClass?: RetryClass;
   /** Connector that produced the error, if any. */
   connectorId?: string;
+  /** The provider's own error code (e.g. FedaPay's `INSUFFICIENT_FUND_ERROR`), for support and logs. */
+  providerCode?: string;
   /** Original provider response or error, kept for debugging. Never shown to end users. */
   raw?: unknown;
   cause?: unknown;
@@ -67,6 +69,7 @@ export class PayenvError extends Error {
   readonly code: PayenvErrorCode;
   readonly retryClass: RetryClass;
   readonly connectorId: string | undefined;
+  readonly providerCode: string | undefined;
   readonly raw: unknown;
 
   constructor(code: PayenvErrorCode, message: string, options: PayenvErrorOptions = {}) {
@@ -74,6 +77,7 @@ export class PayenvError extends Error {
     this.code = code;
     this.retryClass = options.retryClass ?? DEFAULT_RETRY_CLASS[code];
     this.connectorId = options.connectorId;
+    this.providerCode = options.providerCode;
     this.raw = options.raw;
   }
 
@@ -84,6 +88,7 @@ export class PayenvError extends Error {
       message: this.message,
       retryClass: this.retryClass,
       ...(this.connectorId === undefined ? {} : { connectorId: this.connectorId }),
+      ...(this.providerCode === undefined ? {} : { providerCode: this.providerCode }),
     };
   }
 }
@@ -93,6 +98,7 @@ export interface SerializedError {
   message: string;
   retryClass: RetryClass;
   connectorId?: string;
+  providerCode?: string;
 }
 
 export function isPayenvError(value: unknown): value is PayenvError {

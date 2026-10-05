@@ -244,6 +244,69 @@ describe('fedapay connector — status', () => {
     if (result.found) expect(result.error?.code).toBe(code);
   });
 
+  // Reproduces live transactions observed on 2026-10-05 (personal data removed).
+  const lookup = async (transaction: Record<string, unknown>) => {
+    const server = fakeFedaPay({
+      'GET /transactions/1234': () => ({ status: 200, json: { 'v1/transaction': transaction } }),
+    });
+    return fedapay({ secretKey: 'sk', environment: 'live', fetch: server.fetch }).getStatus(
+      { operation: 'collect', reference: 'att_1', providerRef: '1234' },
+      { signal: new AbortController().signal },
+    );
+  };
+
+  it('exposes the real reason of a canceled payment (insufficient funds, MTN live)', async () => {
+    const result = await lookup({
+      id: 1234,
+      status: 'canceled',
+      mode: 'mtn_open',
+      last_error_code: 'INSUFFICIENT_FUND_ERROR',
+    });
+    expect(result).toMatchObject({ found: true, status: 'canceled' });
+    if (!result.found) throw new Error('expected found');
+    expect(result.error?.toJSON()).toEqual({
+      code: 'INSUFFICIENT_FUNDS',
+      message:
+        'FedaPay transaction canceled — Insufficient funds, or an operator limit was reached (INSUFFICIENT_FUND_ERROR)',
+      retryClass: 'do_not_retry',
+      connectorId: 'fedapay',
+      providerCode: 'INSUFFICIENT_FUND_ERROR',
+    });
+  });
+
+  it('keeps a pending payment pending but exposes why (Celtiis live)', async () => {
+    const operatorDump = '{"Envelope"=>{"Body"=>{"TransactionStatus"=>"Initiated"}}}';
+    const result = await lookup({
+      id: 1234,
+      status: 'pending',
+      mode: 'sbin',
+      last_error_code: 'API_ERROR',
+      last_error_message: operatorDump,
+      metadata: { expire_schedule_jobid: 'job_1' },
+      expired_at: null,
+    });
+    expect(result).toMatchObject({ found: true, status: 'pending' });
+    if (!result.found) throw new Error('expected found');
+    expect(result.error?.code).toBe('UNKNOWN_ERROR');
+    expect(result.error?.providerCode).toBe('API_ERROR');
+    expect(result.error?.message).toContain('could not get a final status from the operator');
+    // The raw operator dump is available for debugging but never serialized.
+    expect(result.error?.raw).toMatchObject({ last_error_message: operatorDump });
+    expect(JSON.stringify(result.error)).not.toContain('Envelope');
+  });
+
+  it('keeps unknown FedaPay error codes visible as providerCode', async () => {
+    const result = await lookup({ id: 1234, status: 'declined', last_error_code: 'NEW_CODE' });
+    if (!result.found) throw new Error('expected found');
+    expect(result.error).toMatchObject({ code: 'CUSTOMER_DECLINED', providerCode: 'NEW_CODE' });
+  });
+
+  it('reports no error on a plain pending payment', async () => {
+    const result = await lookup({ id: 1234, status: 'pending', last_error_code: null });
+    if (!result.found) throw new Error('expected found');
+    expect(result.error).toBeUndefined();
+  });
+
   it('never claims "not found" without a transaction id', async () => {
     const server = fakeFedaPay({});
     await expect(
