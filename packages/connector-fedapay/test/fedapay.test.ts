@@ -267,7 +267,7 @@ describe('fedapay connector — status', () => {
     expect(result.error?.toJSON()).toEqual({
       code: 'INSUFFICIENT_FUNDS',
       message:
-        'FedaPay transaction canceled — The customer has insufficient funds (INSUFFICIENT_FUND_ERROR)',
+        'FedaPay transaction canceled — Insufficient funds, or an operator limit was reached (INSUFFICIENT_FUND_ERROR)',
       retryClass: 'do_not_retry',
       connectorId: 'fedapay',
       providerCode: 'INSUFFICIENT_FUND_ERROR',

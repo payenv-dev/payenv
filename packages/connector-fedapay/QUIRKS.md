@@ -59,6 +59,15 @@ What differs from what you would expect when reading the FedaPay documentation.
   words, the cancellation was not propagated. Payenv keeps the payment `pending` (never
   guessed) and exposes the reason (`UNKNOWN_ERROR` + `providerCode: "API_ERROR"`, raw
   dump in `error.raw`). See "Payments stuck in pending" in the README.
+- **Webhook shape**: `{ name, object: "transaction", object_id, account, entity }`, where
+  `entity` is the full transaction (with `status` and `last_error_code`). Events seen:
+  `transaction.created`, `transaction.canceled`. The connector derives the status from
+  `entity`, not from the event name, so unknown event names still work.
+  ⚠️ Webhooks contain the merchant account details and the payer's phone number (inside
+  `last_error_message`): never log them raw.
+- **MTN's reason behind `INSUFFICIENT_FUND_ERROR`** is
+  `LOW_BALANCE_OR_PAYEE_LIMIT_REACHED_OR_NOT_ALLOWED`: low balance *or* a limit *or* not
+  allowed. Payenv's message says so.
 - **FedaPay schedules an expiration** for pending transactions (`metadata.expire_schedule_jobid`,
   `expired_at` field). Payenv maps `expired` to `CUSTOMER_TIMEOUT`.
 - Fees may be charged to the customer: a 100 XOF payment showed `fees: 2` and
