@@ -131,6 +131,48 @@ describe('refresh', () => {
     expect((await payenv.getPayment(request.idempotencyKey))?.status).toBe('succeeded');
   });
 
+  it('updates the attempt outcome when a pending payment is declined', async () => {
+    const a = fakeConnector('a', pending, async () => ({
+      found: true,
+      status: 'failed',
+      error: new PayenvError('CUSTOMER_DECLINED', 'declined'),
+    }));
+    const payenv = createPayenv({ connectors: [a], ...fast });
+    const request = mtnRequest();
+    expect((await payenv.collect(request)).attempts[0]?.outcome).toBe('accepted');
+
+    const refreshed = await payenv.refresh(request.idempotencyKey);
+
+    expect(refreshed.status).toBe('failed');
+    expect(refreshed.error?.code).toBe('CUSTOMER_DECLINED');
+    expect(refreshed.attempts[0]).toMatchObject({ status: 'failed', outcome: 'failed' });
+  });
+
+  it('marks an unresolved attempt as accepted once the provider confirms it', async () => {
+    let checks = 0;
+    const a = fakeConnector(
+      'a',
+      async () => {
+        throw new PayenvError('TIMEOUT', 'timeout');
+      },
+      async () => {
+        checks += 1;
+        return checks === 1
+          ? { found: true, status: 'unknown' }
+          : { found: true, status: 'succeeded' };
+      },
+    );
+    const payenv = createPayenv({ connectors: [a], ...fast });
+    const request = mtnRequest();
+    expect((await payenv.collect(request)).attempts[0]?.outcome).toBe('unresolved');
+
+    const refreshed = await payenv.refresh(request.idempotencyKey);
+
+    expect(refreshed.status).toBe('succeeded');
+    expect(refreshed.attempts[0]?.outcome).toBe('accepted');
+    expect(refreshed.error).toBeUndefined();
+  });
+
   it('never changes a terminal payment', async () => {
     const a = fakeConnector(
       'a',
