@@ -59,6 +59,11 @@ What Payenv gives you:
 | **Normalized webhooks** | Signature verification per provider, one event format for your app. |
 | **Normalized statuses & errors** | `succeeded`, `failed`, `pending`… and a shared error taxonomy. |
 
+## Try it
+
+A runnable demo collects a real sandbox payment through FedaPay in a minute:
+see [examples/fedapay-demo](examples/fedapay-demo).
+
 ## Principles
 
 1. **Library first.** Payenv runs *inside your app*. No hosted service required, no
