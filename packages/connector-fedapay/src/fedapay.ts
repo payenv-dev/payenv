@@ -233,7 +233,11 @@ export function fedapay(options: FedaPayOptions): Connector {
         throw toError('status', thrown);
       }
       const transaction = unwrap(data, 'transaction');
-      const { status, error } = transactionStatus(transaction.status, id);
+      const { status, error } = transactionStatus(
+        transaction.status,
+        transaction.last_error_code,
+        id,
+      );
       return {
         found: true,
         status,
@@ -276,36 +280,60 @@ function pushStatus(status: unknown): PaymentStatus {
   return 'pending';
 }
 
+/**
+ * FedaPay `last_error_code` values observed on live transactions, mapped to Payenv codes.
+ * Unmapped codes are still exposed as `providerCode`.
+ */
+const FEDAPAY_ERROR_CODES: Readonly<Record<string, PayenvErrorCode>> = {
+  INSUFFICIENT_FUND_ERROR: 'INSUFFICIENT_FUNDS',
+  API_ERROR: 'PROVIDER_UNAVAILABLE',
+};
+
+const FEDAPAY_ERROR_MESSAGES: Readonly<Record<string, string>> = {
+  INSUFFICIENT_FUND_ERROR: 'The customer has insufficient funds',
+  API_ERROR: 'The mobile money operator reported an error',
+};
+
 function transactionStatus(
   status: unknown,
+  lastErrorCode: unknown,
   connectorId: string,
 ): { status: PaymentStatus; error?: PayenvError } {
+  const providerCode =
+    typeof lastErrorCode === 'string' && lastErrorCode !== '' ? lastErrorCode : undefined;
+
+  /** The failure reason: FedaPay's own code when it gives one, a sensible default otherwise. */
+  const reason = (fallback: PayenvErrorCode, what: string) => {
+    const code = (providerCode ? FEDAPAY_ERROR_CODES[providerCode] : undefined) ?? fallback;
+    const detail = providerCode
+      ? ` — ${FEDAPAY_ERROR_MESSAGES[providerCode] ?? 'FedaPay error'} (${providerCode})`
+      : '';
+    // The customer was involved: another provider would not change the outcome.
+    return new PayenvError(code, `FedaPay transaction ${what}${detail}`, {
+      connectorId,
+      retryClass: 'do_not_retry',
+      ...(providerCode ? { providerCode } : {}),
+    });
+  };
+
   switch (status) {
     case 'pending':
-      return { status: 'pending' };
+      // FedaPay may record an operator error while keeping the transaction pending
+      // (seen live: the customer canceled the USSD prompt on Celtiis). The status stays
+      // pending (never guessed), but the reason is exposed to the application.
+      return providerCode
+        ? { status: 'pending', error: reason('UNKNOWN_ERROR', 'still pending after an error') }
+        : { status: 'pending' };
     case 'approved':
     case 'transferred':
     case 'refunded':
       return { status: 'succeeded' };
     case 'declined':
-      return {
-        status: 'failed',
-        error: new PayenvError('CUSTOMER_DECLINED', 'FedaPay transaction declined', {
-          connectorId,
-        }),
-      };
+      return { status: 'failed', error: reason('CUSTOMER_DECLINED', 'declined') };
     case 'canceled':
-      return {
-        status: 'canceled',
-        error: new PayenvError('CUSTOMER_DECLINED', 'FedaPay transaction canceled', {
-          connectorId,
-        }),
-      };
+      return { status: 'canceled', error: reason('CUSTOMER_DECLINED', 'canceled') };
     case 'expired':
-      return {
-        status: 'expired',
-        error: new PayenvError('CUSTOMER_TIMEOUT', 'FedaPay transaction expired', { connectorId }),
-      };
+      return { status: 'expired', error: reason('CUSTOMER_TIMEOUT', 'expired') };
     default:
       return { status: 'unknown' };
   }

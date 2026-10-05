@@ -9,6 +9,12 @@ Before `1.0.0`, minor versions may contain breaking changes.
 ## [Unreleased]
 
 ### Added
+- 2026-10-05 — `@payenv/core`: `PayenvError.providerCode` keeps the provider's own error
+  code in every error.
+- 2026-10-05 — `@payenv/connector-fedapay`: maps FedaPay's `last_error_code`
+  (e.g. `INSUFFICIENT_FUND_ERROR` → `INSUFFICIENT_FUNDS`), including on transactions that
+  stay pending after an operator error. Verified on live transactions.
+- 2026-10-05 — `examples/fedapay-demo`: opt-in live mode with safeguards.
 - 2026-10-05 — `examples/fedapay-demo`: runnable web demo (`pnpm demo`) collecting a
   sandbox payment and following its status live.
 - 2026-09-27 — `@payenv/connector-fedapay`: sandbox pushes go to FedaPay's `momo_test`

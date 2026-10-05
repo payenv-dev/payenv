@@ -44,12 +44,31 @@ What differs from what you would expect when reading the FedaPay documentation.
 - Authentication with a sandbox key, transaction creation, token generation, and status
   lookup by transaction id all work as implemented.
 
+## ✅ Verified live (2026-10-05)
+
+- Live pushes work on `/mtn_open` (MTN) and `/sbin` (Celtiis): the USSD prompt reaches
+  the phone.
+- Benin's 10-digit numbers in E.164 (`+22901…`) are accepted.
+- **Transactions carry a `last_error_code`** with the real reason, e.g.
+  `INSUFFICIENT_FUND_ERROR` on a canceled MTN payment. The connector maps it
+  (→ `INSUFFICIENT_FUNDS`) and always exposes it as `error.providerCode`.
+- **A customer canceling the USSD prompt on Celtiis does not end the transaction**:
+  FedaPay keeps it `pending` and records `last_error_code: "API_ERROR"`. Payenv keeps the
+  payment `pending` (never guessed) and exposes the error. See "Payments stuck in
+  pending" in the README.
+- Fees may be charged to the customer: a 100 XOF payment showed `fees: 2` and
+  `amount_debited: 102`.
+- Transactions have a `merchant_reference` field. Whether it can be set on creation and
+  used for lookups is still to verify (see below).
+
 ## 🔍 Still to verify
 
 - The full list of live transaction statuses. Mapped today: `pending`, `approved`,
   `transferred`, `refunded` → succeeded, `declined` → failed, `canceled`, `expired`.
   Unknown values map to `unknown` (safe).
-- That live pushes accept the E.164 phone format too (the sandbox does).
+- Whether FedaPay eventually expires a transaction stuck in `pending`, and after how long.
+- The other `last_error_code` values (only `INSUFFICIENT_FUND_ERROR` and `API_ERROR` are
+  mapped; others are exposed as `providerCode` with a default code).
 - Whether a transaction can be looked up by merchant reference. That would let Payenv
   resolve a timeout on the *create* call. Today that case ends as `unknown` (safe but
   not ideal).
