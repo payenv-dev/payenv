@@ -274,17 +274,25 @@ describe('fedapay connector — status', () => {
     });
   });
 
-  it('keeps a pending payment pending but exposes the operator error (Celtiis live)', async () => {
+  it('keeps a pending payment pending but exposes why (Celtiis live)', async () => {
+    const operatorDump = '{"Envelope"=>{"Body"=>{"TransactionStatus"=>"Initiated"}}}';
     const result = await lookup({
       id: 1234,
       status: 'pending',
       mode: 'sbin',
       last_error_code: 'API_ERROR',
+      last_error_message: operatorDump,
+      metadata: { expire_schedule_jobid: 'job_1' },
+      expired_at: null,
     });
     expect(result).toMatchObject({ found: true, status: 'pending' });
     if (!result.found) throw new Error('expected found');
-    expect(result.error?.code).toBe('PROVIDER_UNAVAILABLE');
+    expect(result.error?.code).toBe('UNKNOWN_ERROR');
     expect(result.error?.providerCode).toBe('API_ERROR');
+    expect(result.error?.message).toContain('could not get a final status from the operator');
+    // The raw operator dump is available for debugging but never serialized.
+    expect(result.error?.raw).toMatchObject({ last_error_message: operatorDump });
+    expect(JSON.stringify(result.error)).not.toContain('Envelope');
   });
 
   it('keeps unknown FedaPay error codes visible as providerCode', async () => {

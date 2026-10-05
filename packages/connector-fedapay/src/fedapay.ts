@@ -233,11 +233,7 @@ export function fedapay(options: FedaPayOptions): Connector {
         throw toError('status', thrown);
       }
       const transaction = unwrap(data, 'transaction');
-      const { status, error } = transactionStatus(
-        transaction.status,
-        transaction.last_error_code,
-        id,
-      );
+      const { status, error } = transactionStatus(transaction, id);
       return {
         found: true,
         status,
@@ -286,19 +282,25 @@ function pushStatus(status: unknown): PaymentStatus {
  */
 const FEDAPAY_ERROR_CODES: Readonly<Record<string, PayenvErrorCode>> = {
   INSUFFICIENT_FUND_ERROR: 'INSUFFICIENT_FUNDS',
-  API_ERROR: 'PROVIDER_UNAVAILABLE',
+  // Seen live: FedaPay queried the operator, which still answered "Initiated".
+  // It means "no final status from the operator", not that a service is down.
+  API_ERROR: 'UNKNOWN_ERROR',
 };
 
 const FEDAPAY_ERROR_MESSAGES: Readonly<Record<string, string>> = {
   INSUFFICIENT_FUND_ERROR: 'The customer has insufficient funds',
-  API_ERROR: 'The mobile money operator reported an error',
+  API_ERROR: 'FedaPay could not get a final status from the operator',
 };
 
 function transactionStatus(
-  status: unknown,
-  lastErrorCode: unknown,
+  transaction: Json,
   connectorId: string,
 ): { status: PaymentStatus; error?: PayenvError } {
+  const {
+    status,
+    last_error_code: lastErrorCode,
+    last_error_message: lastErrorMessage,
+  } = transaction;
   const providerCode =
     typeof lastErrorCode === 'string' && lastErrorCode !== '' ? lastErrorCode : undefined;
 
@@ -313,14 +315,17 @@ function transactionStatus(
       connectorId,
       retryClass: 'do_not_retry',
       ...(providerCode ? { providerCode } : {}),
+      // Raw operator output (often a SOAP dump): kept for debugging, never serialized.
+      raw: { last_error_code: lastErrorCode, last_error_message: lastErrorMessage },
     });
   };
 
   switch (status) {
     case 'pending':
-      // FedaPay may record an operator error while keeping the transaction pending
-      // (seen live: the customer canceled the USSD prompt on Celtiis). The status stays
-      // pending (never guessed), but the reason is exposed to the application.
+      // FedaPay may record an error while keeping the transaction pending (seen live:
+      // the customer canceled the USSD prompt on Celtiis, the operator still answered
+      // "Initiated"). The status stays pending (never guessed) and the reason is exposed.
+      // FedaPay schedules an expiration job for pending transactions.
       return providerCode
         ? { status: 'pending', error: reason('UNKNOWN_ERROR', 'still pending after an error') }
         : { status: 'pending' };
