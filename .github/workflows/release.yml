@@ -1,0 +1,44 @@
+name: Release
+
+# Opens a "Version packages" PR when changesets are merged, and publishes to npm
+# when that PR is merged. Uses npm trusted publishing (OIDC): no npm token is stored.
+#
+# Disabled until the repository variable NPM_TRUSTED_PUBLISHING is set to "true"
+# (Settings → Secrets and variables → Actions → Variables), after the first manual
+# publish and the trusted publisher setup on npmjs.com. See CONTRIBUTING.md.
+
+on:
+  push:
+    branches: [main]
+
+concurrency: release-${{ github.ref }}
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  release:
+    if: vars.NPM_TRUSTED_PUBLISHING == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      # Trusted publishing requires npm 11.5.1 or later.
+      - run: npm install -g npm@latest
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - uses: changesets/action@v1
+        with:
+          version: pnpm exec changeset version
+          publish: pnpm release
+          commit: 'chore: version packages'
+          title: 'chore: version packages'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

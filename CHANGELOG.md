@@ -9,6 +9,8 @@ Before `1.0.0`, minor versions may contain breaking changes.
 ## [Unreleased]
 
 ### Added
+- 2026-10-05 — Release tooling (Changesets, trusted publishing workflow), getting-started guide.
+  Packages versioned `0.1.0`; LICENSE, NOTICE and sources shipped in each package.
 - 2026-10-05 — `@payenv/core`: `PayenvError.providerCode` keeps the provider's own error
   code in every error.
 - 2026-10-05 — `@payenv/connector-fedapay`: maps FedaPay's `last_error_code`
