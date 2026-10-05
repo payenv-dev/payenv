@@ -70,7 +70,7 @@ class FedaPayHttpError extends Error {
   }
 }
 
-type Json = Record<string, unknown>;
+export type Json = Record<string, unknown>;
 
 export function fedapay(options: FedaPayOptions): Connector {
   if (!options.secretKey) {
@@ -233,7 +233,7 @@ export function fedapay(options: FedaPayOptions): Connector {
         throw toError('status', thrown);
       }
       const transaction = unwrap(data, 'transaction');
-      const { status, error } = transactionStatus(transaction.status, id);
+      const { status, error } = transactionStatus(transaction, id);
       return {
         found: true,
         status,
@@ -276,36 +276,71 @@ function pushStatus(status: unknown): PaymentStatus {
   return 'pending';
 }
 
-function transactionStatus(
-  status: unknown,
+/**
+ * FedaPay `last_error_code` values observed on live transactions, mapped to Payenv codes.
+ * Unmapped codes are still exposed as `providerCode`.
+ */
+const FEDAPAY_ERROR_CODES: Readonly<Record<string, PayenvErrorCode>> = {
+  INSUFFICIENT_FUND_ERROR: 'INSUFFICIENT_FUNDS',
+  // Seen live: FedaPay queried the operator, which still answered "Initiated".
+  // It means "no final status from the operator", not that a service is down.
+  API_ERROR: 'UNKNOWN_ERROR',
+};
+
+const FEDAPAY_ERROR_MESSAGES: Readonly<Record<string, string>> = {
+  // MTN's own reason is LOW_BALANCE_OR_PAYEE_LIMIT_REACHED_OR_NOT_ALLOWED.
+  INSUFFICIENT_FUND_ERROR: 'Insufficient funds, or an operator limit was reached',
+  API_ERROR: 'FedaPay could not get a final status from the operator',
+};
+
+/** Maps a FedaPay transaction (API response or webhook entity) to a Payenv status. */
+export function transactionStatus(
+  transaction: Json,
   connectorId: string,
 ): { status: PaymentStatus; error?: PayenvError } {
+  const {
+    status,
+    last_error_code: lastErrorCode,
+    last_error_message: lastErrorMessage,
+  } = transaction;
+  const providerCode =
+    typeof lastErrorCode === 'string' && lastErrorCode !== '' ? lastErrorCode : undefined;
+
+  /** The failure reason: FedaPay's own code when it gives one, a sensible default otherwise. */
+  const reason = (fallback: PayenvErrorCode, what: string) => {
+    const code = (providerCode ? FEDAPAY_ERROR_CODES[providerCode] : undefined) ?? fallback;
+    const detail = providerCode
+      ? ` — ${FEDAPAY_ERROR_MESSAGES[providerCode] ?? 'FedaPay error'} (${providerCode})`
+      : '';
+    // The customer was involved: another provider would not change the outcome.
+    return new PayenvError(code, `FedaPay transaction ${what}${detail}`, {
+      connectorId,
+      retryClass: 'do_not_retry',
+      ...(providerCode ? { providerCode } : {}),
+      // Raw operator output (often a SOAP dump): kept for debugging, never serialized.
+      raw: { last_error_code: lastErrorCode, last_error_message: lastErrorMessage },
+    });
+  };
+
   switch (status) {
     case 'pending':
-      return { status: 'pending' };
+      // FedaPay may record an error while keeping the transaction pending (seen live:
+      // the customer canceled the USSD prompt on Celtiis, the operator still answered
+      // "Initiated"). The status stays pending (never guessed) and the reason is exposed.
+      // FedaPay schedules an expiration job for pending transactions.
+      return providerCode
+        ? { status: 'pending', error: reason('UNKNOWN_ERROR', 'still pending after an error') }
+        : { status: 'pending' };
     case 'approved':
     case 'transferred':
     case 'refunded':
       return { status: 'succeeded' };
     case 'declined':
-      return {
-        status: 'failed',
-        error: new PayenvError('CUSTOMER_DECLINED', 'FedaPay transaction declined', {
-          connectorId,
-        }),
-      };
+      return { status: 'failed', error: reason('CUSTOMER_DECLINED', 'declined') };
     case 'canceled':
-      return {
-        status: 'canceled',
-        error: new PayenvError('CUSTOMER_DECLINED', 'FedaPay transaction canceled', {
-          connectorId,
-        }),
-      };
+      return { status: 'canceled', error: reason('CUSTOMER_DECLINED', 'canceled') };
     case 'expired':
-      return {
-        status: 'expired',
-        error: new PayenvError('CUSTOMER_TIMEOUT', 'FedaPay transaction expired', { connectorId }),
-      };
+      return { status: 'expired', error: reason('CUSTOMER_TIMEOUT', 'expired') };
     default:
       return { status: 'unknown' };
   }

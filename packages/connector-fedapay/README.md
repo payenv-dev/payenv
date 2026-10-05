@@ -5,11 +5,11 @@
 > 🚧 Pre-release (`0.x`).
 
 **Supported today:** mobile money collections in Benin (XOF): MTN, Moov, Celtiis.
-Status lookup and webhook signature verification. Payouts and refunds are coming.
+Status lookup, webhook signature verification and parsing. Payouts and refunds are coming.
 
 ```ts
 import { createPayenv } from '@payenv/core';
-import { fedapay, verifyFedaPayWebhook } from '@payenv/connector-fedapay';
+import { fedapay, parseFedaPayWebhook, verifyFedaPayWebhook } from '@payenv/connector-fedapay';
 
 const payenv = createPayenv({
   connectors: [
@@ -34,6 +34,11 @@ const valid = await verifyFedaPayWebhook(
   request.headers.get('x-fedapay-signature'),
   process.env.FEDAPAY_WEBHOOK_SECRET!,
 );
+if (valid) {
+  const event = parseFedaPayWebhook(rawBody); // { name, providerRef, status, error }
+  // Find your payment by event.providerRef, then confirm with FedaPay:
+  // await payenv.refresh(idempotencyKey);
+}
 ```
 
 ## Options
@@ -51,6 +56,33 @@ const valid = await verifyFedaPayWebhook(
 The FedaPay sandbox simulates every operator with a single `momo_test` mode. Use
 `+22964000001` or `+22966000001` for a successful payment; any other number simulates a
 failure. Your code stays the same: just switch `environment` to `'live'` in production.
+
+## Error reasons
+
+When FedaPay records why a payment failed, it is mapped to a Payenv code and the original
+code is kept:
+
+```json
+{
+  "code": "INSUFFICIENT_FUNDS",
+  "message": "FedaPay transaction canceled — The customer has insufficient funds (INSUFFICIENT_FUND_ERROR)",
+  "providerCode": "INSUFFICIENT_FUND_ERROR"
+}
+```
+
+## Payments stuck in pending
+
+Some operators don't report a cancellation: on Celtiis, a customer who cancels the USSD
+prompt leaves the transaction `pending` at FedaPay, with an operator error recorded.
+Payenv keeps it `pending` (it never guesses, since the payment could still complete) and
+exposes the error in `payment.error`. Recommended handling:
+
+1. Show the customer that the payment is not confirmed yet, and let them retry with a
+   **new** idempotency key (a new payment).
+2. Keep calling `payenv.refresh(key)` (or handle webhooks) for the old payment, so a late
+   success is not lost.
+3. Apply your own business timeout (e.g. release the order after 15 minutes), and if the
+   old payment succeeds later, fulfil or refund it.
 
 ## Safety
 

@@ -6,4 +6,9 @@ export {
   type FedaPayOptions,
   fedapay,
 } from './fedapay.js';
-export { type VerifyWebhookOptions, verifyFedaPayWebhook } from './webhook.js';
+export {
+  type FedaPayWebhookEvent,
+  parseFedaPayWebhook,
+  type VerifyWebhookOptions,
+  verifyFedaPayWebhook,
+} from './webhook.js';
