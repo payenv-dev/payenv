@@ -173,6 +173,27 @@ describe('refresh', () => {
     expect(refreshed.error).toBeUndefined();
   });
 
+  it('shows a provider error on a payment that stays pending', async () => {
+    const a = fakeConnector('a', pending, async () => ({
+      found: true,
+      status: 'pending',
+      error: new PayenvError('PROVIDER_UNAVAILABLE', 'operator error', {
+        providerCode: 'API_ERROR',
+      }),
+    }));
+    const payenv = createPayenv({ connectors: [a], ...fast });
+    const request = mtnRequest();
+    await payenv.collect(request);
+
+    const refreshed = await payenv.refresh(request.idempotencyKey);
+
+    expect(refreshed.status).toBe('pending');
+    expect(refreshed.error).toMatchObject({
+      code: 'PROVIDER_UNAVAILABLE',
+      providerCode: 'API_ERROR',
+    });
+  });
+
   it('never changes a terminal payment', async () => {
     const a = fakeConnector(
       'a',

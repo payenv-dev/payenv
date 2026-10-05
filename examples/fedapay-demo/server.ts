@@ -226,9 +226,13 @@ ${live ? `<p class="live">⚠️ Mode LIVE : <strong>vrai argent</strong>. Monta
     const badge = document.getElementById('status');
     badge.textContent = payment.status;
     badge.className = 'badge ' + payment.status;
+    const reason = payment.error ? payment.error.code + ' — ' + payment.error.message : '';
     document.getElementById('message').textContent =
-      payment.status === 'pending' ? 'Le client doit valider sur son téléphone… (vérification toutes les 2 s)'
-      : payment.error ? payment.error.code + ' — ' + payment.error.message : '';
+      payment.status === 'pending'
+        ? (reason
+            ? 'FedaPay signale : ' + reason + '. Le statut reste « pending » chez FedaPay : Payenv ne devine pas.'
+            : 'Le client doit valider sur son téléphone… (vérification toutes les 2 s)')
+        : reason;
     document.getElementById('details').textContent = JSON.stringify(payment, null, 2);
   }
   async function poll(key) {
@@ -238,6 +242,8 @@ ${live ? `<p class="live">⚠️ Mode LIVE : <strong>vrai argent</strong>. Monta
       show(payment);
       if (terminal.includes(payment.status)) return;
     }
+    document.getElementById('message').textContent +=
+      ' — Toujours en attente après 1 minute. Une vraie application revérifie plus tard avec payenv.refresh().';
   }
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
