@@ -70,7 +70,7 @@ class FedaPayHttpError extends Error {
   }
 }
 
-type Json = Record<string, unknown>;
+export type Json = Record<string, unknown>;
 
 export function fedapay(options: FedaPayOptions): Connector {
   if (!options.secretKey) {
@@ -288,11 +288,13 @@ const FEDAPAY_ERROR_CODES: Readonly<Record<string, PayenvErrorCode>> = {
 };
 
 const FEDAPAY_ERROR_MESSAGES: Readonly<Record<string, string>> = {
-  INSUFFICIENT_FUND_ERROR: 'The customer has insufficient funds',
+  // MTN's own reason is LOW_BALANCE_OR_PAYEE_LIMIT_REACHED_OR_NOT_ALLOWED.
+  INSUFFICIENT_FUND_ERROR: 'Insufficient funds, or an operator limit was reached',
   API_ERROR: 'FedaPay could not get a final status from the operator',
 };
 
-function transactionStatus(
+/** Maps a FedaPay transaction (API response or webhook entity) to a Payenv status. */
+export function transactionStatus(
   transaction: Json,
   connectorId: string,
 ): { status: PaymentStatus; error?: PayenvError } {

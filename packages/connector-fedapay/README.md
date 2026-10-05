@@ -5,11 +5,11 @@
 > 🚧 Pre-release (`0.x`).
 
 **Supported today:** mobile money collections in Benin (XOF): MTN, Moov, Celtiis.
-Status lookup and webhook signature verification. Payouts and refunds are coming.
+Status lookup, webhook signature verification and parsing. Payouts and refunds are coming.
 
 ```ts
 import { createPayenv } from '@payenv/core';
-import { fedapay, verifyFedaPayWebhook } from '@payenv/connector-fedapay';
+import { fedapay, parseFedaPayWebhook, verifyFedaPayWebhook } from '@payenv/connector-fedapay';
 
 const payenv = createPayenv({
   connectors: [
@@ -34,6 +34,11 @@ const valid = await verifyFedaPayWebhook(
   request.headers.get('x-fedapay-signature'),
   process.env.FEDAPAY_WEBHOOK_SECRET!,
 );
+if (valid) {
+  const event = parseFedaPayWebhook(rawBody); // { name, providerRef, status, error }
+  // Find your payment by event.providerRef, then confirm with FedaPay:
+  // await payenv.refresh(idempotencyKey);
+}
 ```
 
 ## Options

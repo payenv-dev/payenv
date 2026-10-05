@@ -1,3 +1,6 @@
+import type { PayenvError, PaymentStatus } from '@payenv/core';
+import { type Json, transactionStatus } from './fedapay.js';
+
 export interface VerifyWebhookOptions {
   /** Maximum age of the signature, in seconds. Defaults to 300 (5 minutes). */
   toleranceSeconds?: number;
@@ -60,4 +63,47 @@ function constantTimeEqual(a: string, b: string): boolean {
     difference |= a.charCodeAt(index) ^ b.charCodeAt(index);
   }
   return difference === 0;
+}
+
+/** A FedaPay webhook, normalized. */
+export interface FedaPayWebhookEvent {
+  /** FedaPay's event name, e.g. `transaction.canceled`. Informational only. */
+  name: string;
+  /** The FedaPay transaction id: the payment's `providerRef`. */
+  providerRef: string;
+  /** Derived from the transaction itself, not from the event name. */
+  status: PaymentStatus;
+  error?: PayenvError;
+}
+
+/**
+ * Parses a FedaPay webhook body **after** {@link verifyFedaPayWebhook} succeeded.
+ * Returns `undefined` for events that are not about a transaction.
+ *
+ * Treat the result as a hint: confirm with `payenv.refresh(idempotencyKey)`, which
+ * asks FedaPay for the authoritative status.
+ */
+export function parseFedaPayWebhook(
+  rawBody: string,
+  connectorId = 'fedapay',
+): FedaPayWebhookEvent | undefined {
+  let body: unknown;
+  try {
+    body = JSON.parse(rawBody);
+  } catch {
+    return undefined;
+  }
+  if (body === null || typeof body !== 'object') return undefined;
+  const { name, object, entity } = body as Json;
+  if (object !== 'transaction' || entity === null || typeof entity !== 'object') return undefined;
+  const transaction = entity as Json;
+  if (transaction.id === undefined || transaction.id === null) return undefined;
+
+  const { status, error } = transactionStatus(transaction, connectorId);
+  return {
+    name: typeof name === 'string' ? name : 'unknown',
+    providerRef: String(transaction.id),
+    status,
+    ...(error ? { error } : {}),
+  };
 }

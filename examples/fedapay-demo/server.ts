@@ -10,7 +10,7 @@
  * Amounts are capped by DEMO_LIVE_MAX_AMOUNT (default 200 XOF).
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { fedapay, verifyFedaPayWebhook } from '@payenv/connector-fedapay';
+import { fedapay, parseFedaPayWebhook, verifyFedaPayWebhook } from '@payenv/connector-fedapay';
 import { createPayenv, isPayenvError, type Payment } from '@payenv/core';
 
 const live = process.env.DEMO_LIVE === 'yes';
@@ -36,6 +36,9 @@ if (live) {
 }
 
 const port = Number(process.env.PORT ?? 3000);
+
+/** providerRef → idempotency key, to match webhooks with payments (a database in real life). */
+const keysByProviderRef = new Map<string, string>();
 
 const payenv = createPayenv({
   connectors: [fedapay({ secretKey, environment: live ? 'live' : 'sandbox' })],
@@ -101,6 +104,7 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
         description: live ? 'Payenv demo (live test)' : 'Payenv demo',
         idempotencyKey: `demo_${Date.now()}`,
       });
+      if (payment.providerRef) keysByProviderRef.set(payment.providerRef, payment.idempotencyKey);
       send(response, 200, view(payment));
     } catch (error) {
       // Invalid requests (bad phone, no route...) are thrown, not returned as payments.
@@ -126,8 +130,22 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
       Array.isArray(signature) ? signature[0] : signature,
       process.env.FEDAPAY_WEBHOOK_SECRET ?? '',
     );
-    console.log(`[webhook] signature ${valid ? 'valid' : 'INVALID'}`);
-    send(response, valid ? 200 : 400, { received: valid });
+    if (!valid) {
+      console.log('[webhook] INVALID signature — ignored');
+      send(response, 400, { received: false });
+      return;
+    }
+    const event = parseFedaPayWebhook(raw);
+    // A real application looks the payment up in its own database by providerRef.
+    const key = event && keysByProviderRef.get(event.providerRef);
+    if (event && key) {
+      // The webhook is a hint: ask FedaPay for the authoritative status.
+      const payment = await payenv.refresh(key);
+      console.log(`[webhook] ${event.name} → payment ${key} is now ${payment.status}`);
+    } else {
+      console.log(`[webhook] ${event?.name ?? 'unrecognized event'} — no matching payment`);
+    }
+    send(response, 200, { received: true });
     return;
   }
 
