@@ -10,5 +10,6 @@ ADR that *supersedes* the old one.
 | [0002](0002-library-first-no-custody.md) | Library first, no custody of funds or secrets | Accepted | 2026-09-26 |
 | [0003](0003-typescript-first.md) | TypeScript as the first implementation | Accepted | 2026-09-26 |
 | [0004](0004-no-fallback-on-ambiguous-state.md) | Never fall back on an ambiguous state | Accepted | 2026-09-26 |
+| [0005](0005-customer-started-payments.md) | Payments started by the customer in a widget | Accepted | 2026-10-05 |
 
 To propose one, copy [template.md](template.md) to `NNNN-short-title.md` and open a PR.

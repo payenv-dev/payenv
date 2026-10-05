@@ -5,7 +5,8 @@
     "noEmit": true,
     "paths": {
       "@payenv/core": ["../../packages/core/src/index.ts"],
-      "@payenv/connector-fedapay": ["../../packages/connector-fedapay/src/index.ts"]
+      "@payenv/connector-fedapay": ["../../packages/connector-fedapay/src/index.ts"],
+      "@payenv/connector-kkiapay": ["../../packages/connector-kkiapay/src/index.ts"]
     }
   },
   "include": ["*.ts"]

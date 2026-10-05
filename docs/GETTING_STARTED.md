@@ -117,6 +117,21 @@ const payenv = createPayenv({
 });
 ```
 
+Some providers start payments in a widget on the customer's side (e.g. Kkiapay). They are
+used only if your front end can open their widget, and can serve as a fallback:
+
+```ts
+const payment = await payenv.collect({ ...request, supportedWidgets: ['kkiapay'] });
+if (payment.nextAction?.type === 'widget') {
+  // Front end: open the widget with payment.nextAction.params, then send the transaction
+  // id it returns to your server, which calls:
+  await payenv.confirm(payment.idempotencyKey, transactionId);
+}
+```
+
+`confirm` verifies with the provider that the transaction belongs to this payment and has
+the right amount. See [@payenv/connector-kkiapay](../packages/connector-kkiapay).
+
 More connectors are on the way: see [CONNECTORS.md](CONNECTORS.md).
 
 ## 7. Before going live
