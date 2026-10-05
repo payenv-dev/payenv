@@ -29,6 +29,11 @@ export interface CollectRequest {
    */
   idempotencyKey: string;
   metadata?: Readonly<Record<string, string>>;
+  /**
+   * Widgets the application's front end can open (e.g. `['kkiapay']`). Connectors whose
+   * payments start in a widget are only used when their widget is listed here.
+   */
+  supportedWidgets?: readonly string[];
 }
 
 /** What a connector declares it can serve. Omitted lists mean "any". */
@@ -39,12 +44,22 @@ export interface Capability {
   countries?: readonly CountryCode[];
   /** Only meaningful for `mobile_money`. */
   networks?: readonly MobileMoneyNetwork[];
+  /**
+   * Set when the customer starts the payment in this provider's widget rather than the
+   * server. The route is only used when the request lists it in `supportedWidgets`.
+   */
+  widget?: string;
 }
 
 /** An instruction the application must follow to complete the payment. */
 export type NextAction =
   | { type: 'redirect'; url: string }
-  | { type: 'customer_confirmation'; channel?: 'ussd' | 'sms' | 'app'; message?: string };
+  | { type: 'customer_confirmation'; channel?: 'ussd' | 'sms' | 'app'; message?: string }
+  /**
+   * Open the provider's widget with these parameters. When it completes, send the
+   * provider's transaction id to `payenv.confirm`.
+   */
+  | { type: 'widget'; provider: string; params: Readonly<Record<string, unknown>> };
 
 /**
  * Result of a provider call, normalized by the connector.
@@ -56,6 +71,14 @@ export interface ProviderResult {
   status: PaymentStatus;
   /** The provider's identifier for this transaction. */
   providerRef?: string;
+  /**
+   * The merchant reference attached to the provider transaction (sent by the connector
+   * in `collect`, echoed by the provider in status lookups). Used by `payenv.confirm`
+   * to prove that a provider transaction belongs to this payment.
+   */
+  merchantReference?: string;
+  /** The amount the provider transaction is for, as reported by the provider. */
+  amount?: Money;
   nextAction?: NextAction;
   /** Required when `status` is `failed`, `canceled` or `expired`, to classify the failure. */
   error?: PayenvError;

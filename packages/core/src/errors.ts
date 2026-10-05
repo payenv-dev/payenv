@@ -27,6 +27,7 @@ export type PayenvErrorCode =
   | 'NO_ROUTE'
   | 'IDEMPOTENCY_CONFLICT'
   | 'PAYMENT_NOT_FOUND'
+  | 'REFERENCE_MISMATCH'
   // ambiguous
   | 'TIMEOUT'
   | 'NETWORK_ERROR'
@@ -47,6 +48,7 @@ export const DEFAULT_RETRY_CLASS: Readonly<Record<PayenvErrorCode, RetryClass>> 
   NO_ROUTE: 'do_not_retry',
   IDEMPOTENCY_CONFLICT: 'do_not_retry',
   PAYMENT_NOT_FOUND: 'do_not_retry',
+  REFERENCE_MISMATCH: 'do_not_retry',
   TIMEOUT: 'ambiguous',
   NETWORK_ERROR: 'ambiguous',
   UNKNOWN_ERROR: 'ambiguous',
