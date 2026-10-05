@@ -5,25 +5,40 @@
  *
  * Needs FEDAPAY_SANDBOX_SECRET_KEY in the root .env file. Then open http://localhost:3000.
  * Sandbox test numbers: +22964000001 and +22966000001 succeed, any other number fails.
+ *
+ * Live mode (REAL money) is opt-in: DEMO_LIVE=yes and FEDAPAY_LIVE_SECRET_KEY in .env.
+ * Amounts are capped by DEMO_LIVE_MAX_AMOUNT (default 200 XOF).
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { fedapay, verifyFedaPayWebhook } from '@payenv/connector-fedapay';
 import { createPayenv, isPayenvError, type Payment } from '@payenv/core';
 
-const secretKey = process.env.FEDAPAY_SANDBOX_SECRET_KEY;
-if (!secretKey) {
-  console.error('Missing FEDAPAY_SANDBOX_SECRET_KEY. Copy .env.example to .env and fill it in.');
-  process.exit(1);
-}
-if (secretKey.startsWith('sk_live')) {
-  console.error('This demo only runs with a sandbox key (sk_sandbox_...).');
-  process.exit(1);
+const live = process.env.DEMO_LIVE === 'yes';
+const maxLiveAmount = Number(process.env.DEMO_LIVE_MAX_AMOUNT ?? 200);
+const secretKey = live
+  ? process.env.FEDAPAY_LIVE_SECRET_KEY
+  : process.env.FEDAPAY_SANDBOX_SECRET_KEY;
+
+if (live) {
+  if (!secretKey?.startsWith('sk_live')) {
+    fail('DEMO_LIVE=yes requires FEDAPAY_LIVE_SECRET_KEY (sk_live_...) in .env.');
+  }
+  if (!Number.isSafeInteger(maxLiveAmount) || maxLiveAmount <= 0 || maxLiveAmount > 1000) {
+    fail('DEMO_LIVE_MAX_AMOUNT must be an integer between 1 and 1000 XOF.');
+  }
+} else {
+  if (!secretKey) {
+    fail('Missing FEDAPAY_SANDBOX_SECRET_KEY. Copy .env.example to .env and fill it in.');
+  }
+  if (!secretKey.startsWith('sk_sandbox')) {
+    fail('FEDAPAY_SANDBOX_SECRET_KEY must be a sandbox key (sk_sandbox_...).');
+  }
 }
 
 const port = Number(process.env.PORT ?? 3000);
 
 const payenv = createPayenv({
-  connectors: [fedapay({ secretKey, environment: 'sandbox' })],
+  connectors: [fedapay({ secretKey, environment: live ? 'live' : 'sandbox' })],
   onEvent(event) {
     if (event.type === 'attempt.finished') {
       const { attempt } = event;
@@ -43,8 +58,15 @@ createServer((request, response) => {
     console.error(error);
     send(response, 500, { error: 'Internal error' });
   });
-}).listen(port, () => {
-  console.log(`Payenv demo running on http://localhost:${port}`);
+  // Only reachable from this computer, never from the network.
+}).listen(port, '127.0.0.1', () => {
+  if (live) {
+    console.warn('');
+    console.warn('  ⚠️  LIVE MODE — payments move REAL money on your FedaPay account.');
+    console.warn(`  ⚠️  Amounts are capped at ${maxLiveAmount} XOF. Stop with Ctrl+C.`);
+    console.warn('');
+  }
+  console.log(`Payenv demo (${live ? 'LIVE' : 'sandbox'}) running on http://localhost:${port}`);
 });
 
 async function route(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -52,7 +74,7 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
 
   if (request.method === 'GET' && url.pathname === '/') {
     response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    response.end(PAGE);
+    response.end(page());
     return;
   }
 
@@ -62,12 +84,21 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
       phone: string;
       network: string;
     };
+    if (live && !(Number(body.amount) <= maxLiveAmount)) {
+      send(response, 400, {
+        error: {
+          code: 'INVALID_REQUEST',
+          message: `Live demo amounts are capped at ${maxLiveAmount} XOF`,
+        },
+      });
+      return;
+    }
     try {
       const payment = await payenv.collect({
         amount: { value: Number(body.amount), currency: 'XOF' },
         method: { type: 'mobile_money', network: body.network, country: 'BJ', phone: body.phone },
         customer: { firstName: 'Demo', lastName: 'Payenv', email: 'demo@example.com' },
-        description: 'Payenv demo',
+        description: live ? 'Payenv demo (live test)' : 'Payenv demo',
         idempotencyKey: `demo_${Date.now()}`,
       });
       send(response, 200, view(payment));
@@ -122,6 +153,11 @@ function view(payment: Payment) {
   };
 }
 
+function fail(message: string): never {
+  console.error(message);
+  process.exit(1);
+}
+
 function readBody(request: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     let data = '';
@@ -139,7 +175,8 @@ function send(response: ServerResponse, status: number, body: unknown): void {
   response.end(JSON.stringify(body));
 }
 
-const PAGE = `<!doctype html>
+function page(): string {
+  return `<!doctype html>
 <html lang="fr">
 <head>
 <meta charset="utf-8">
@@ -159,19 +196,21 @@ const PAGE = `<!doctype html>
   .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; color: white; font-weight: 600; }
   .succeeded { background: var(--ok); } .failed, .canceled, .expired { background: var(--ko); }
   .pending, .requires_action, .created, .unknown { background: var(--wait); }
+  .live { background: var(--ko); color: white; padding: 10px 14px; border-radius: 8px; }
   pre { font-size: 12px; overflow-x: auto; background: #8881; padding: 8px; border-radius: 8px; }
 </style>
 </head>
 <body>
 <h1>Payenv demo</h1>
-<p class="sub">Paiement mobile money via FedaPay (sandbox)</p>
+<p class="sub">Paiement mobile money via FedaPay (${live ? 'LIVE' : 'sandbox'})</p>
+${live ? `<p class="live">⚠️ Mode LIVE : <strong>vrai argent</strong>. Montant plafonné à ${maxLiveAmount} XOF.</p>` : ''}
 <form id="pay">
-  <label>Montant (XOF) <input name="amount" type="number" min="1" value="100" required></label>
+  <label>Montant (XOF) <input name="amount" type="number" min="1" ${live ? `max="${maxLiveAmount}"` : ''} value="100" required></label>
   <label>Réseau
     <select name="network"><option value="mtn">MTN</option><option value="moov">Moov</option><option value="celtiis">Celtiis</option></select>
   </label>
-  <label>Téléphone <input name="phone" value="+22964000001" required></label>
-  <span class="hint">Sandbox : +22964000001 ou +22966000001 = succès · tout autre numéro = échec</span>
+  <label>Téléphone <input name="phone" value="${live ? '' : '+22964000001'}" placeholder="+229…" required></label>
+  <span class="hint">${live ? 'Votre vrai numéro, au format international (+229…). Vous recevrez une demande de validation USSD.' : 'Sandbox : +22964000001 ou +22966000001 = succès · tout autre numéro = échec'}</span>
   <button>Payer</button>
 </form>
 <div id="result">
@@ -218,3 +257,4 @@ const PAGE = `<!doctype html>
 </script>
 </body>
 </html>`;
+}
