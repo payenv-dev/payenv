@@ -83,3 +83,19 @@ Sandbox tests are opt-in: copy `.env.example` to `.env` (git-ignored) and fill i
 **sandbox** credentials. Without them, those tests are skipped.
 
 The stack is TypeScript 7 (`tsc`), Vitest for tests, and Biome for lint and format.
+
+## Releases
+
+Versions are managed with [Changesets](https://github.com/changesets/changesets).
+`@payenv/core` and the connectors share the same version.
+
+1. In your PR, run `pnpm changeset`, choose the bump, and describe the change for users.
+   Commit the generated file in `.changeset/`.
+2. When it is merged, the Release workflow opens a "chore: version packages" PR.
+3. Merging that PR publishes to npm through
+   [trusted publishing](https://docs.npmjs.com/trusted-publishers) (no npm token stored),
+   with provenance.
+
+The workflow runs only when the repository variable `NPM_TRUSTED_PUBLISHING` is `true`.
+Each package must be registered once on npmjs.com (package → Settings → Trusted publisher:
+GitHub Actions, repository `payenv-dev/payenv`, workflow `release.yml`).

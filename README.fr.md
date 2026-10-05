@@ -4,7 +4,7 @@
 
 🇬🇧 [Read in English](README.md) — *la version anglaise fait référence.*
 
-**Statut :** 🌱 Début du développement — le moteur existe, pas encore de connecteur ni de version publiée. Démarré le **26/09/2026**.
+**Statut :** 🌱 Pré-version `0.1.0` — moteur et connecteur FedaPay (mobile money au Bénin). L'API peut encore changer. Démarré le **26/09/2026**.
 **Licence :** [Apache 2.0](LICENSE) — gratuit pour un usage personnel et commercial, pour toujours.
 
 ---
@@ -48,10 +48,14 @@ const payment = await payenv.collect({
 //   sur le suivant uniquement s'il a échoué *avant* tout mouvement d'argent.
 ```
 
-## Essayer
+## Démarrer
 
-Une démo prête à lancer encaisse un vrai paiement sandbox via FedaPay en une minute :
-voir [examples/fedapay-demo](examples/fedapay-demo).
+```sh
+npm install @payenv/core @payenv/connector-fedapay
+```
+
+Suivez le [guide de démarrage](docs/GETTING_STARTED.md) (en anglais), ou lancez la
+[démo web](examples/fedapay-demo) qui encaisse un paiement sandbox via FedaPay.
 
 ## Principes
 

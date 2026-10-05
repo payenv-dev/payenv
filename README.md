@@ -4,7 +4,7 @@
 
 🇫🇷 [Lire en français](README.fr.md)
 
-**Status:** 🌱 Early development — the core engine exists, no connector or release yet. Started on **2026-09-26**.
+**Status:** 🌱 Pre-release `0.1.0` — core engine and FedaPay connector (Benin mobile money). The API may still change. Started on **2026-09-26**.
 **License:** [Apache 2.0](LICENSE) — free for personal and commercial use, forever.
 
 ---
@@ -59,10 +59,14 @@ What Payenv gives you:
 | **Normalized webhooks** | Signature verification per provider, one event format for your app. |
 | **Normalized statuses & errors** | `succeeded`, `failed`, `pending`… and a shared error taxonomy. |
 
-## Try it
+## Get started
 
-A runnable demo collects a real sandbox payment through FedaPay in a minute:
-see [examples/fedapay-demo](examples/fedapay-demo).
+```sh
+npm install @payenv/core @payenv/connector-fedapay
+```
+
+Follow the [5-minute guide](docs/GETTING_STARTED.md), or run the
+[web demo](examples/fedapay-demo) that collects a sandbox payment through FedaPay.
 
 ## Principles
 
@@ -78,6 +82,7 @@ see [examples/fedapay-demo](examples/fedapay-demo).
 
 ## Documentation
 
+- [Getting started](docs/GETTING_STARTED.md) — your first payment in 5 minutes
 - [Vision](docs/VISION.md) — why this project exists and where it's going
 - [Architecture](docs/ARCHITECTURE.md) — core concepts: connectors, router, statuses, webhooks
 - [Connectors](docs/CONNECTORS.md) — supported and planned aggregators
