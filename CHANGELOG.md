@@ -9,6 +9,10 @@ Before `1.0.0`, minor versions may contain breaking changes.
 ## [Unreleased]
 
 ### Added
+- 2026-10-06 — `@payenv/core`: payouts (`payenv.payout`) with the same guarantees as
+  collections; new error code `INSUFFICIENT_BALANCE` (safe to fall back).
+- 2026-10-06 — `@payenv/connector-fedapay`: payouts (MTN, Moov, Celtiis) and payout status
+  lookups. Kkiapay has no payout API (documented in its QUIRKS).
 - 2026-10-06 — `@payenv/core`: `toE164(phone, country)` converts numbers typed by customers
   (e.g. `61 00 00 00` in Benin) to E.164, with per-country trunk-prefix rules.
 - 2026-10-05 — `@payenv/core`: payments started by the customer in a widget

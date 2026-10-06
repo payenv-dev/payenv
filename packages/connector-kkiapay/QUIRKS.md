@@ -34,6 +34,15 @@
   includes `country`, `source_common_name` (`mtn-benin`) and balances.
 - First fallback seen end to end: FedaPay (simulated outage) → Kkiapay widget → confirmed.
 
+## Payouts: not available
+
+Kkiapay "payouts" (*reversements*) are the merchant withdrawing their own balance, on a
+schedule configured in the dashboard (every 3, 7 or 30 days, or above a threshold). There
+is no documented API to send money to a customer: the SDK's `/merchant/payouts/schedule`
+call is commented out. The connector therefore does not implement `payout`, and Payenv
+never routes payouts to it. Refunds of collected payments (`/api/v1/transactions/revert`)
+are possible and planned.
+
 ## 🔍 To verify in the sandbox
 
 - That webhooks also echo `partnerId` (status responses do).
