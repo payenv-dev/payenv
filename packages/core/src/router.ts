@@ -27,7 +27,9 @@ export function supports(
         (capability.countries === undefined ||
           (country !== undefined && capability.countries.includes(country))) &&
         (capability.networks === undefined ||
-          (network !== undefined && capability.networks.includes(network))),
+          (network !== undefined && capability.networks.includes(network))) &&
+        (capability.widget === undefined ||
+          (request.supportedWidgets?.includes(capability.widget) ?? false)),
     );
 }
 

@@ -9,6 +9,14 @@ Before `1.0.0`, minor versions may contain breaking changes.
 ## [Unreleased]
 
 ### Added
+- 2026-10-05 — `@payenv/core`: payments started by the customer in a widget
+  (`nextAction.type === 'widget'`, `supportedWidgets`, `Capability.widget`) and
+  `payenv.confirm`, which verifies the provider transaction's merchant reference and
+  amount (ADR 0005). New error code `REFERENCE_MISMATCH`.
+- 2026-10-05 — `@payenv/connector-kkiapay`: Kkiapay widget payments (Benin, MTN and Moov),
+  server-side verification, webhook verification and parsing.
+- 2026-10-05 — demo: Kkiapay widget and a "simulate a FedaPay outage" switch to watch the
+  fallback.
 - 2026-10-05 — Release tooling (Changesets, trusted publishing workflow), getting-started guide.
   Packages versioned `0.1.0`; LICENSE, NOTICE and sources shipped in each package.
 - 2026-10-05 — `@payenv/core`: `PayenvError.providerCode` keeps the provider's own error

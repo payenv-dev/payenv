@@ -19,6 +19,20 @@ and watch its status change live. No framework, no dependency besides Payenv.
 Sandbox test numbers: `+22964000001` and `+22966000001` succeed; any other number
 simulates a failed payment.
 
+## Fallback to Kkiapay (sandbox)
+
+Add your Kkiapay sandbox keys to `.env`:
+```
+KKIAPAY_SANDBOX_PUBLIC_KEY=...
+KKIAPAY_SANDBOX_PRIVATE_KEY=...
+KKIAPAY_SANDBOX_SECRET_KEY=...
+```
+
+The page then shows **"Simuler une panne FedaPay"**. Tick it and pay: FedaPay fails before
+any money can move, Payenv falls back to Kkiapay, and the page opens the Kkiapay widget.
+Pay with a Kkiapay test number (e.g. `61000000`): the transaction id goes to the server,
+which calls `payenv.confirm` to verify it with Kkiapay.
+
 ## Live mode (real money)
 
 To check that a real USSD prompt reaches your phone, the demo has an opt-in live mode.

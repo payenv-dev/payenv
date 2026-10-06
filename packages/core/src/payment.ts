@@ -22,6 +22,8 @@ export interface Attempt {
   status: PaymentStatus;
   outcome?: AttemptOutcome;
   providerRef?: string;
+  /** Merchant reference sent to the provider, when the connector reports one. */
+  merchantReference?: string;
   error?: SerializedError;
   startedAt: string;
   endedAt?: string;
