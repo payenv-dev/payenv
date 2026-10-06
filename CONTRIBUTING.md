@@ -75,6 +75,7 @@ packages/
     src/
     test/
   connector-fedapay/   @payenv/connector-fedapay
+  connector-kkiapay/   @payenv/connector-kkiapay
 examples/
   fedapay-demo/        runnable demo: pnpm demo
 ```

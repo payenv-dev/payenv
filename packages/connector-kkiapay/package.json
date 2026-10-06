@@ -1,0 +1,55 @@
+{
+  "name": "@payenv/connector-kkiapay",
+  "version": "0.1.0",
+  "description": "Kkiapay connector for Payenv (mobile money via the Kkiapay widget, verified server-side).",
+  "license": "Apache-2.0",
+  "author": "Jules Mahounou (https://github.com/jules-mahounou)",
+  "homepage": "https://github.com/payenv-dev/payenv/tree/main/packages/connector-kkiapay#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/payenv-dev/payenv.git",
+    "directory": "packages/connector-kkiapay"
+  },
+  "bugs": "https://github.com/payenv-dev/payenv/issues",
+  "keywords": [
+    "payenv",
+    "kkiapay",
+    "mobile-money",
+    "benin",
+    "mtn",
+    "moov"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "QUIRKS.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "@payenv/core": "workspace:^"
+  },
+  "devDependencies": {
+    "@payenv/core": "workspace:^",
+    "@types/node": "^26.6.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

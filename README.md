@@ -4,7 +4,7 @@
 
 🇫🇷 [Lire en français](README.fr.md)
 
-**Status:** 🌱 Pre-release `0.1.0` — core engine and FedaPay connector (Benin mobile money). The API may still change. Started on **2026-09-26**.
+**Status:** 🌱 Pre-release `0.x` — core engine, FedaPay and Kkiapay connectors (Benin mobile money). The API may still change. Started on **2026-09-26**.
 **License:** [Apache 2.0](LICENSE) — free for personal and commercial use, forever.
 
 ---

@@ -8,10 +8,27 @@
  *
  * Live mode (REAL money) is opt-in: DEMO_LIVE=yes and FEDAPAY_LIVE_SECRET_KEY in .env.
  * Amounts are capped by DEMO_LIVE_MAX_AMOUNT (default 200 XOF).
+ *
+ * Kkiapay (sandbox) is added when KKIAPAY_SANDBOX_PUBLIC_KEY, _PRIVATE_KEY and _SECRET_KEY
+ * are set. Tick "Simuler une panne FedaPay" to watch Payenv fall back to its widget.
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { fedapay, parseFedaPayWebhook, verifyFedaPayWebhook } from '@payenv/connector-fedapay';
-import { createPayenv, isPayenvError, type Payment } from '@payenv/core';
+import {
+  KKIAPAY_WIDGET,
+  kkiapay,
+  parseKkiapayWebhook,
+  verifyKkiapayWebhook,
+} from '@payenv/connector-kkiapay';
+import {
+  type Connector,
+  createMemoryStore,
+  createPayenv,
+  isPayenvError,
+  PayenvError,
+  type PayenvOptions,
+  type Payment,
+} from '@payenv/core';
 
 const live = process.env.DEMO_LIVE === 'yes';
 const maxLiveAmount = Number(process.env.DEMO_LIVE_MAX_AMOUNT ?? 200);
@@ -40,8 +57,31 @@ const port = Number(process.env.PORT ?? 3000);
 /** providerRef → idempotency key, to match webhooks with payments (a database in real life). */
 const keysByProviderRef = new Map<string, string>();
 
-const payenv = createPayenv({
-  connectors: [fedapay({ secretKey, environment: live ? 'live' : 'sandbox' })],
+const kkiapayKeys = {
+  publicKey: process.env.KKIAPAY_SANDBOX_PUBLIC_KEY ?? '',
+  privateKey: process.env.KKIAPAY_SANDBOX_PRIVATE_KEY ?? '',
+  secretKey: process.env.KKIAPAY_SANDBOX_SECRET_KEY ?? '',
+};
+// Kkiapay is sandbox-only in this demo.
+const withKkiapay =
+  !live && Boolean(kkiapayKeys.publicKey && kkiapayKeys.privateKey && kkiapayKeys.secretKey);
+
+const feda = fedapay({ secretKey, environment: live ? 'live' : 'sandbox' });
+const kkia = withKkiapay ? [kkiapay(kkiapayKeys)] : [];
+
+/** FedaPay as if it were down: rejects before any money can move, so fallback is safe. */
+const fedaDown: Connector = {
+  ...feda,
+  async collect() {
+    throw new PayenvError('PROVIDER_UNAVAILABLE', 'Simulated FedaPay outage (demo)', {
+      connectorId: feda.id,
+    });
+  },
+};
+
+const shared: Omit<PayenvOptions, 'connectors'> = {
+  // Both instances share one store, so refresh and confirm work for every payment.
+  store: createMemoryStore(),
   onEvent(event) {
     if (event.type === 'attempt.finished') {
       const { attempt } = event;
@@ -54,7 +94,9 @@ const payenv = createPayenv({
       console.log(`[payenv] fallback ${event.from} → ${event.to} (${event.reason.code})`);
     }
   },
-});
+};
+const payenv = createPayenv({ ...shared, connectors: [feda, ...kkia] });
+const payenvWithOutage = createPayenv({ ...shared, connectors: [fedaDown, ...kkia] });
 
 createServer((request, response) => {
   route(request, response).catch((error: unknown) => {
@@ -70,6 +112,7 @@ createServer((request, response) => {
     console.warn('');
   }
   console.log(`Payenv demo (${live ? 'LIVE' : 'sandbox'}) running on http://localhost:${port}`);
+  console.log(`Connectors: fedapay${withKkiapay ? ', kkiapay (widget)' : ''}`);
 });
 
 async function route(request: IncomingMessage, response: ServerResponse): Promise<void> {
@@ -86,6 +129,8 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
       amount: number;
       phone: string;
       network: string;
+      outage?: string;
+      widgets?: string[];
     };
     if (live && !(Number(body.amount) <= maxLiveAmount)) {
       send(response, 400, {
@@ -97,17 +142,33 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
       return;
     }
     try {
-      const payment = await payenv.collect({
+      const client = body.outage === 'on' ? payenvWithOutage : payenv;
+      const payment = await client.collect({
         amount: { value: Number(body.amount), currency: 'XOF' },
         method: { type: 'mobile_money', network: body.network, country: 'BJ', phone: body.phone },
         customer: { firstName: 'Demo', lastName: 'Payenv', email: 'demo@example.com' },
         description: live ? 'Payenv demo (live test)' : 'Payenv demo',
         idempotencyKey: `demo_${Date.now()}`,
+        // The page declares which widgets it can open.
+        supportedWidgets: (body.widgets ?? []).filter((widget) => widget === KKIAPAY_WIDGET),
       });
       if (payment.providerRef) keysByProviderRef.set(payment.providerRef, payment.idempotencyKey);
       send(response, 200, view(payment));
     } catch (error) {
       // Invalid requests (bad phone, no route...) are thrown, not returned as payments.
+      if (isPayenvError(error)) send(response, 400, { error: error.toJSON() });
+      else throw error;
+    }
+    return;
+  }
+
+  const confirmMatch = /^\/api\/payments\/([\w-]+)\/confirm$/.exec(url.pathname);
+  if (request.method === 'POST' && confirmMatch?.[1]) {
+    const { transactionId } = JSON.parse(await readBody(request)) as { transactionId: string };
+    try {
+      // Verified with Kkiapay: right payment (partnerId) and right amount.
+      send(response, 200, view(await payenv.confirm(confirmMatch[1], transactionId)));
+    } catch (error) {
       if (isPayenvError(error)) send(response, 400, { error: error.toJSON() });
       else throw error;
     }
@@ -149,6 +210,31 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
     return;
   }
 
+  if (request.method === 'POST' && url.pathname === '/webhooks/kkiapay') {
+    const raw = await readBody(request);
+    const header = request.headers['x-kkiapay-secret'];
+    if (
+      !verifyKkiapayWebhook(
+        Array.isArray(header) ? header[0] : header,
+        process.env.KKIAPAY_WEBHOOK_SECRET ?? '',
+      )
+    ) {
+      console.log('[webhook] Kkiapay: INVALID secret — ignored');
+      send(response, 400, { received: false });
+      return;
+    }
+    const event = parseKkiapayWebhook(raw);
+    if (event?.merchantReference) {
+      // partnerId is the payment's idempotency key; confirm verifies with Kkiapay.
+      const payment = await payenv.confirm(event.merchantReference, event.providerRef);
+      console.log(
+        `[webhook] ${event.name} → payment ${payment.idempotencyKey} is now ${payment.status}`,
+      );
+    }
+    send(response, 200, { received: true });
+    return;
+  }
+
   send(response, 404, { error: 'Not found' });
 }
 
@@ -162,6 +248,7 @@ function view(payment: Payment) {
     providerRef: payment.providerRef,
     phone: phone.replace(/^(\+\d{3})\d+(\d{2})$/, '$1••••••$2'),
     error: payment.error,
+    nextAction: payment.nextAction,
     attempts: payment.attempts.map(({ connectorId, status, outcome, error }) => ({
       connectorId,
       status,
@@ -215,12 +302,13 @@ function page(): string {
   .succeeded { background: var(--ok); } .failed, .canceled, .expired { background: var(--ko); }
   .pending, .requires_action, .created, .unknown { background: var(--wait); }
   .live { background: var(--ko); color: white; padding: 10px 14px; border-radius: 8px; }
+  .check { display: flex; gap: 8px; align-items: center; font-weight: 400; }
   pre { font-size: 12px; overflow-x: auto; background: #8881; padding: 8px; border-radius: 8px; }
 </style>
 </head>
 <body>
 <h1>Payenv demo</h1>
-<p class="sub">Paiement mobile money via FedaPay (${live ? 'LIVE' : 'sandbox'})</p>
+<p class="sub">Paiement mobile money via FedaPay${withKkiapay ? ' et Kkiapay' : ''} (${live ? 'LIVE' : 'sandbox'})</p>
 ${live ? `<p class="live">⚠️ Mode LIVE : <strong>vrai argent</strong>. Montant plafonné à ${maxLiveAmount} XOF.</p>` : ''}
 <form id="pay">
   <label>Montant (XOF) <input name="amount" type="number" min="1" ${live ? `max="${maxLiveAmount}"` : ''} value="100" required></label>
@@ -229,6 +317,12 @@ ${live ? `<p class="live">⚠️ Mode LIVE : <strong>vrai argent</strong>. Monta
   </label>
   <label>Téléphone <input name="phone" value="${live ? '' : '+22964000001'}" placeholder="+229…" required></label>
   <span class="hint">${live ? 'Votre vrai numéro, au format international (+229…). Vous recevrez une demande de validation USSD.' : 'Sandbox : +22964000001 ou +22966000001 = succès · tout autre numéro = échec'}</span>
+  ${
+    withKkiapay
+      ? `<label class="check"><input type="checkbox" name="outage"> Simuler une panne FedaPay (Payenv bascule vers le widget Kkiapay)</label>
+  <span class="hint">Widget Kkiapay (sandbox) : 61000000 ou 97000000 (MTN) = succès · 61000002 = fonds insuffisants</span>`
+      : ''
+  }
   <button>Payer</button>
 </form>
 <div id="result">
@@ -236,8 +330,24 @@ ${live ? `<p class="live">⚠️ Mode LIVE : <strong>vrai argent</strong>. Monta
   <p id="message"></p>
   <pre id="details"></pre>
 </div>
+${withKkiapay ? '<script src="https://cdn.kkiapay.me/k.js"></script>' : ''}
 <script>
   const form = document.getElementById('pay');
+  let currentKey = null;
+  async function confirmWidget(transactionId) {
+    const response = await fetch('/api/payments/' + currentKey + '/confirm', {
+      method: 'POST', body: JSON.stringify({ transactionId }),
+    });
+    const result = await response.json();
+    show(response.ok ? result : { status: 'failed', error: result.error });
+  }
+  if (window.addSuccessListener) {
+    // The widget reports a transaction id; the server verifies it before trusting it.
+    addSuccessListener((response) => confirmWidget(response.transactionId));
+  }
+  function openWidget(action) {
+    if (action.provider === 'kkiapay' && window.openKkiapayWidget) openKkiapayWidget(action.params);
+  }
   const terminal = ['succeeded', 'failed', 'canceled', 'expired'];
   function show(payment) {
     document.getElementById('result').style.display = 'block';
@@ -246,7 +356,10 @@ ${live ? `<p class="live">⚠️ Mode LIVE : <strong>vrai argent</strong>. Monta
     badge.className = 'badge ' + payment.status;
     const reason = payment.error ? payment.error.code + ' — ' + payment.error.message : '';
     document.getElementById('message').textContent =
-      payment.status === 'pending'
+      payment.status === 'requires_action'
+        ? 'Le client paie dans le widget ' + (payment.nextAction?.provider ?? '') + '…' +
+          (payment.attempts?.length > 1 ? ' (bascule après : ' + payment.attempts[0].error + ')' : '')
+        : payment.status === 'pending'
         ? (reason
             ? 'FedaPay signale : ' + reason + '. Le statut reste « pending » chez FedaPay : Payenv ne devine pas.'
             : 'Le client doit valider sur son téléphone… (vérification toutes les 2 s)')
@@ -269,10 +382,13 @@ ${live ? `<p class="live">⚠️ Mode LIVE : <strong>vrai argent</strong>. Monta
     button.disabled = true;
     try {
       const data = Object.fromEntries(new FormData(form));
+      data.widgets = window.openKkiapayWidget ? ['kkiapay'] : [];
       const response = await fetch('/api/pay', { method: 'POST', body: JSON.stringify(data) });
       const payment = await response.json();
       if (!response.ok) { show({ status: 'failed', error: payment.error }); return; }
       show(payment);
+      currentKey = payment.key;
+      if (payment.nextAction?.type === 'widget') openWidget(payment.nextAction);
       if (!terminal.includes(payment.status)) await poll(payment.key);
     } finally {
       button.disabled = false;
