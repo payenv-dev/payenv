@@ -1,6 +1,6 @@
 {
   "name": "@payenv/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Payenv core: unified payment model, router, and safe-fallback attempt engine.",
   "license": "Apache-2.0",
   "author": "Jules Mahounou (https://github.com/jules-mahounou)",
