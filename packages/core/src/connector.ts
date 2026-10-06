@@ -1,6 +1,7 @@
 import type { PayenvError } from './errors.js';
 import type {
   CountryCode,
+  MobileMoneyMethod,
   MobileMoneyNetwork,
   PaymentMethod,
   PaymentMethodType,
@@ -8,7 +9,7 @@ import type {
 import type { CurrencyCode, Money } from './money.js';
 import type { PaymentStatus } from './status.js';
 
-export type Operation = 'collect';
+export type Operation = 'collect' | 'payout';
 
 export interface Customer {
   firstName?: string;
@@ -34,6 +35,19 @@ export interface CollectRequest {
    * payments start in a widget are only used when their widget is listed here.
    */
   supportedWidgets?: readonly string[];
+}
+
+/** Sends money from the merchant's provider balance to a recipient (disbursement). */
+export interface PayoutRequest {
+  amount: Money;
+  /** Where the money goes. */
+  recipient: MobileMoneyMethod;
+  /** The recipient's identity (some providers require a name and an email). */
+  customer?: Customer;
+  description?: string;
+  /** Same guarantees as for collections: the same key never sends money twice. */
+  idempotencyKey: string;
+  metadata?: Readonly<Record<string, string>>;
 }
 
 /** What a connector declares it can serve. Omitted lists mean "any". */
@@ -129,6 +143,12 @@ export interface Connector {
   readonly id: string;
   capabilities(): readonly Capability[];
   collect(request: CollectRequest, context: AttemptContext): Promise<ProviderResult>;
+  /**
+   * Sends a payout. Optional: connectors without it are never used for payouts. It must
+   * follow the same rules as `collect`: report the provider id before the call that moves
+   * money, and return `unknown` (not throw) when that call's outcome is uncertain.
+   */
+  payout?(request: PayoutRequest, context: AttemptContext): Promise<ProviderResult>;
   getStatus(query: StatusQuery, context: StatusContext): Promise<StatusResult>;
   /**
    * Maps an error thrown by `collect` / `getStatus` to a {@link PayenvError}.

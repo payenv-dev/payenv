@@ -1,6 +1,8 @@
 import type {
   CollectRequest,
   Connector,
+  Operation,
+  PayoutRequest,
   ProviderResult,
   StatusQuery,
   StatusResult,
@@ -41,6 +43,11 @@ export interface PayenvOptions {
 export interface Payenv {
   /** Collects a payment, falling back between connectors only when it is proven safe. */
   collect(request: CollectRequest): Promise<Payment>;
+  /**
+   * Sends money to a recipient, with the same guarantees as `collect`: idempotency, and
+   * fallback to another connector only when it is proven that no money was sent.
+   */
+  payout(request: PayoutRequest): Promise<Payment>;
   getPayment(idempotencyKey: string): Promise<Payment | undefined>;
   /** Asks the provider for the latest status of a non-terminal payment. */
   refresh(idempotencyKey: string): Promise<Payment>;
@@ -134,30 +141,31 @@ export function createPayenv(options: PayenvOptions): Payenv {
 
   async function runAttempt(
     connector: Connector,
-    request: CollectRequest,
+    request: CollectRequest | PayoutRequest,
     payment: Payment,
     attempt: Attempt,
   ): Promise<Decision> {
     const controller = new AbortController();
-    const query: StatusQuery = { operation: 'collect', reference: attempt.reference };
+    const query: StatusQuery = { operation: payment.operation, reference: attempt.reference };
     const recordProviderRef = (providerRef: string) => {
       attempt.providerRef = providerRef;
       query.providerRef = providerRef;
     };
     let classification: Classification;
     try {
-      const result = await withTimeout(
-        connector.collect(request, {
-          paymentId: payment.id,
-          attemptId: attempt.id,
-          reference: attempt.reference,
-          idempotencyKey: attempt.id,
-          signal: controller.signal,
-          reportProviderRef: recordProviderRef,
-        }),
-        attemptTimeoutMs,
-        controller,
-      );
+      const context = {
+        paymentId: payment.id,
+        attemptId: attempt.id,
+        reference: attempt.reference,
+        idempotencyKey: attempt.id,
+        signal: controller.signal,
+        reportProviderRef: recordProviderRef,
+      };
+      const call =
+        payment.operation === 'payout'
+          ? callPayout(connector, request as PayoutRequest, context)
+          : connector.collect(request as CollectRequest, context);
+      const result = await withTimeout(call, attemptTimeoutMs, controller);
       if (result.providerRef !== undefined) recordProviderRef(result.providerRef);
       classification = classify(result, connector);
     } catch (thrown) {
@@ -215,19 +223,32 @@ export function createPayenv(options: PayenvOptions): Payenv {
     }
   }
 
-  async function collect(request: CollectRequest): Promise<Payment> {
+  /**
+   * Runs a collection or a payout. `route` is the request as the router sees it (for
+   * payouts, `method` is the recipient); `original` is what the connector receives.
+   */
+  async function start(
+    operation: Operation,
+    route: CollectRequest,
+    original: CollectRequest | PayoutRequest,
+  ): Promise<Payment> {
+    const request = route;
     validate(request);
-    const fingerprint = fingerprintOf(request);
+    const fingerprint = fingerprintOf(operation, request);
 
     const existing = await store.get(request.idempotencyKey);
     if (existing) return assertSameRequest(existing, fingerprint);
 
-    const eligible = connectors.filter((connector) => supports(connector, 'collect', request));
+    const eligible = connectors.filter(
+      (connector) =>
+        supports(connector, operation, request) &&
+        (operation === 'collect' || typeof connector.payout === 'function'),
+    );
     const candidates = eligible.length === 0 ? [] : await routing(eligible, request);
     if (candidates.length === 0) {
       throw new PayenvError(
         'NO_ROUTE',
-        `No connector supports ${describeRoute(request)}. Check the connectors' capabilities.`,
+        `No connector supports ${operation} ${describeRoute(request)}. Check the connectors' capabilities.`,
       );
     }
 
@@ -235,7 +256,7 @@ export function createPayenv(options: PayenvOptions): Payenv {
     const payment: Payment = {
       id: `pay_${crypto.randomUUID()}`,
       idempotencyKey: request.idempotencyKey,
-      operation: 'collect',
+      operation,
       status: 'created',
       amount: request.amount,
       method: request.method,
@@ -270,7 +291,7 @@ export function createPayenv(options: PayenvOptions): Payenv {
       await save(payment);
       emit({ type: 'attempt.started', payment, attempt });
 
-      const decision = await runAttempt(connector, request, payment, attempt);
+      const decision = await runAttempt(connector, original, payment, attempt);
       apply(payment, attempt, decision);
       await save(payment);
       emit({ type: 'attempt.finished', payment, attempt });
@@ -314,8 +335,13 @@ export function createPayenv(options: PayenvOptions): Payenv {
     return { payment, attempt, connector };
   }
 
-  async function lookup(connector: Connector, attempt: Attempt, providerRef?: string) {
-    const query: StatusQuery = { operation: 'collect', reference: attempt.reference };
+  async function lookup(
+    connector: Connector,
+    payment: Payment,
+    attempt: Attempt,
+    providerRef?: string,
+  ) {
+    const query: StatusQuery = { operation: payment.operation, reference: attempt.reference };
     const ref = providerRef ?? attempt.providerRef;
     if (ref !== undefined) query.providerRef = ref;
     try {
@@ -361,7 +387,7 @@ export function createPayenv(options: PayenvOptions): Payenv {
     // A widget payment has nothing to look up until the customer completes it (confirm).
     if (payment.status === 'requires_action' && attempt.providerRef === undefined) return payment;
 
-    const status = await lookup(connector, attempt);
+    const status = await lookup(connector, payment, attempt);
     if (!status.found) {
       const error = new PayenvError(
         'PAYMENT_NOT_FOUND',
@@ -388,6 +414,12 @@ export function createPayenv(options: PayenvOptions): Payenv {
     if (!attempt || !connector) {
       throw new PayenvError('INVALID_REQUEST', 'This payment has no attempt to confirm');
     }
+    if (payment.operation !== 'collect') {
+      throw new PayenvError(
+        'INVALID_REQUEST',
+        'Only collections started in a widget can be confirmed',
+      );
+    }
     if (attempt.providerRef !== undefined) {
       // Confirming twice with the same transaction is harmless; another one is not.
       if (attempt.providerRef === providerRef) return refresh(idempotencyKey);
@@ -404,7 +436,7 @@ export function createPayenv(options: PayenvOptions): Payenv {
       );
     }
 
-    const status = await lookup(connector, attempt, providerRef);
+    const status = await lookup(connector, payment, attempt, providerRef);
     if (!status.found) {
       throw new PayenvError(
         'PAYMENT_NOT_FOUND',
@@ -441,8 +473,25 @@ export function createPayenv(options: PayenvOptions): Payenv {
     return payment;
   }
 
+  const collect = (request: CollectRequest) => start('collect', request, request);
+
+  const payout = (request: PayoutRequest) =>
+    start(
+      'payout',
+      {
+        amount: request.amount,
+        method: request.recipient,
+        idempotencyKey: request.idempotencyKey,
+        ...(request.customer ? { customer: request.customer } : {}),
+        ...(request.description ? { description: request.description } : {}),
+        ...(request.metadata ? { metadata: request.metadata } : {}),
+      },
+      request,
+    );
+
   return {
     collect,
+    payout,
     getPayment: (idempotencyKey) => store.get(idempotencyKey),
     refresh,
     confirm,
@@ -533,7 +582,20 @@ function validate(request: CollectRequest): void {
   }
 }
 
-function fingerprintOf(request: CollectRequest): string {
+function callPayout(
+  connector: Connector,
+  request: PayoutRequest,
+  context: Parameters<NonNullable<Connector['payout']>>[1],
+): Promise<ProviderResult> {
+  if (!connector.payout) {
+    return Promise.reject(
+      new PayenvError('ROUTE_UNSUPPORTED', `Connector "${connector.id}" does not support payouts`),
+    );
+  }
+  return connector.payout(request, context);
+}
+
+function fingerprintOf(operation: Operation, request: CollectRequest): string {
   const { amount, method } = request;
   const target =
     method.type === 'mobile_money'
@@ -541,7 +603,7 @@ function fingerprintOf(request: CollectRequest): string {
       : method.type === 'card'
         ? [method.token]
         : [method.returnUrl];
-  return JSON.stringify([amount.value, amount.currency, method.type, ...target]);
+  return JSON.stringify([operation, amount.value, amount.currency, method.type, ...target]);
 }
 
 function assertSameRequest(payment: Payment, fingerprint: string): Payment {
