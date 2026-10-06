@@ -4,8 +4,8 @@
 
 > 🚧 Pre-release (`0.x`).
 
-**Supported today:** mobile money collections in Benin (XOF): MTN, Moov, Celtiis.
-Status lookup, webhook signature verification and parsing. Payouts and refunds are coming.
+**Supported today:** mobile money collections and **payouts** in Benin (XOF): MTN, Moov,
+Celtiis. Status lookup, webhook signature verification and parsing. Refunds are coming.
 
 ```ts
 import { createPayenv } from '@payenv/core';
@@ -56,6 +56,26 @@ if (valid) {
 The FedaPay sandbox simulates every operator with a single `momo_test` mode. Use
 `+22964000001` or `+22966000001` for a successful payment; any other number simulates a
 failure. Your code stays the same: just switch `environment` to `'live'` in production.
+
+## Payouts
+
+Send money from your FedaPay balance to a mobile money account. Payouts must be enabled
+on your FedaPay account.
+
+```ts
+const payout = await payenv.payout({
+  amount: { value: 2000, currency: 'XOF' },
+  recipient: { type: 'mobile_money', network: 'mtn', country: 'BJ', phone: '+22990000000' },
+  customer: { firstName: 'Ada', lastName: 'Lovelace', email: 'ada@example.com' },
+  idempotencyKey: 'withdrawal_42', // the same key never sends money twice
+});
+// payout.status === 'pending' → follow it with payenv.refresh('withdrawal_42')
+```
+
+If the FedaPay balance is insufficient (`INSUFFICIENT_BALANCE`) or payouts are not enabled
+(`ROUTE_UNSUPPORTED`), Payenv falls back to another connector that supports payouts. If the
+call that sends the money times out, Payenv checks the payout with FedaPay and never sends
+it a second time elsewhere.
 
 ## Error reasons
 
