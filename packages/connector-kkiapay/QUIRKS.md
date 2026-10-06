@@ -24,11 +24,19 @@
   error, `…02` insufficient funds, `…03` declined. Moov: `68000000` / `95000000`, same
   suffixes.
 
+## ✅ Verified end to end in the sandbox (2026-10-06)
+
+- A widget payment (MTN, test number) returned a `transactionId`, and `payenv.confirm`
+  verified it: the status response **echoes the widget's `partnerId`** and reports
+  **`amount` = the amount requested** (100), with fees apart (`fees: 2`). The widget showed
+  102 F CFA to the customer (1.9 % fees added).
+- The status response uses `isFeesBorneByMerchant` (boolean), not `feeSupportedBy`, and
+  includes `country`, `source_common_name` (`mtn-benin`) and balances.
+- First fallback seen end to end: FedaPay (simulated outage) → Kkiapay widget → confirmed.
+
 ## 🔍 To verify in the sandbox
 
-- That `partnerId` passed to the widget is echoed in status responses and webhooks.
-  `payenv.confirm` relies on it: without it, confirmation is refused (safe).
-- That `amount` in status responses is the amount requested (not including fees), for
-  both `feeSupportedBy` values.
+- That webhooks also echo `partnerId` (status responses do).
+- That `amount` stays the amount requested when fees are borne by the merchant.
 - The phone format the widget expects (sent today without `+`, e.g. `22961000000`).
 - Whether a `PENDING` status exists.
