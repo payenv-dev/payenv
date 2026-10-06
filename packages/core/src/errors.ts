@@ -16,6 +16,7 @@ export type PayenvErrorCode =
   | 'RATE_LIMITED'
   | 'ROUTE_UNSUPPORTED'
   | 'AUTHENTICATION_FAILED'
+  | 'INSUFFICIENT_BALANCE'
   // do_not_retry
   | 'INSUFFICIENT_FUNDS'
   | 'CUSTOMER_DECLINED'
@@ -38,6 +39,8 @@ export const DEFAULT_RETRY_CLASS: Readonly<Record<PayenvErrorCode, RetryClass>> 
   RATE_LIMITED: 'safe_to_fallback',
   ROUTE_UNSUPPORTED: 'safe_to_fallback',
   AUTHENTICATION_FAILED: 'safe_to_fallback',
+  // The merchant's balance at this provider: another provider's balance may suffice.
+  INSUFFICIENT_BALANCE: 'safe_to_fallback',
   INSUFFICIENT_FUNDS: 'do_not_retry',
   CUSTOMER_DECLINED: 'do_not_retry',
   CUSTOMER_TIMEOUT: 'do_not_retry',

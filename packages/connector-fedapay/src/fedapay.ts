@@ -7,6 +7,7 @@ import {
   PayenvError,
   type PayenvErrorCode,
   type PaymentStatus,
+  type PayoutRequest,
   type ProviderResult,
   type StatusResult,
 } from '@payenv/core';
@@ -35,6 +36,19 @@ export const DEFAULT_SANDBOX_OPERATORS: FedaPayOperators = {
   BJ: { mtn: 'momo_test', moov: 'momo_test', celtiis: 'momo_test' },
 };
 
+/**
+ * FedaPay payout modes (verified on live payouts in Benin). They differ from the
+ * collection slugs: MTN is `mtn` here, `mtn_open` for collections.
+ */
+export const DEFAULT_PAYOUT_OPERATORS: FedaPayOperators = {
+  BJ: { mtn: 'mtn', moov: 'moov', celtiis: 'sbin' },
+};
+
+/** Sandbox payout modes, by analogy with collections (to verify: see QUIRKS.md). */
+export const DEFAULT_SANDBOX_PAYOUT_OPERATORS: FedaPayOperators = {
+  BJ: { mtn: 'momo_test', moov: 'momo_test', celtiis: 'momo_test' },
+};
+
 export interface FedaPayOptions {
   /** Secret API key (sandbox or live). Keep it in an environment variable. */
   secretKey: string;
@@ -46,6 +60,12 @@ export interface FedaPayOptions {
    * on your FedaPay merchant account (Dashboard → Payment methods).
    */
   operators?: FedaPayOperators;
+  /**
+   * Payout modes to expose, per country. Defaults to {@link DEFAULT_PAYOUT_OPERATORS} in
+   * live mode and {@link DEFAULT_SANDBOX_PAYOUT_OPERATORS} in the sandbox. Pass `{}` to
+   * disable payouts. Payouts must be enabled on your FedaPay account.
+   */
+  payoutOperators?: FedaPayOperators;
   /** Connector id used in routing and payments. Defaults to `fedapay`. */
   id?: string;
   /** Custom `fetch`, e.g. for tests or proxies. Defaults to the global `fetch`. */
@@ -57,8 +77,13 @@ const BASE_URLS: Record<FedaPayEnvironment, string> = {
   live: 'https://api.fedapay.com/v1',
 };
 
-/** Steps of a collection. Money can only move once the `push` step is reached. */
-type Step = 'create' | 'token' | 'push' | 'status';
+/**
+ * Steps of a collection (create → token → push) and of a payout (payout → send).
+ * Money can only move once `push` or `send` is reached.
+ */
+type Step = 'create' | 'token' | 'push' | 'payout' | 'send' | 'status';
+
+const BEFORE_MONEY: ReadonlySet<Step> = new Set(['create', 'token', 'payout']);
 
 class FedaPayHttpError extends Error {
   constructor(
@@ -81,15 +106,20 @@ export function fedapay(options: FedaPayOptions): Connector {
   const baseUrl = BASE_URLS[environment];
   const operators =
     options.operators ?? (environment === 'live' ? DEFAULT_OPERATORS : DEFAULT_SANDBOX_OPERATORS);
+  const payoutOperators =
+    options.payoutOperators ??
+    (environment === 'live' ? DEFAULT_PAYOUT_OPERATORS : DEFAULT_SANDBOX_PAYOUT_OPERATORS);
   const doFetch = options.fetch ?? globalThis.fetch;
 
-  const capabilities: Capability[] = Object.entries(operators).map(([country, networks]) => ({
-    operation: 'collect',
-    method: 'mobile_money',
-    currencies: ['XOF'],
-    countries: [country],
-    networks: Object.keys(networks),
-  }));
+  const routes = (operation: 'collect' | 'payout', table: FedaPayOperators): Capability[] =>
+    Object.entries(table).map(([country, networks]) => ({
+      operation,
+      method: 'mobile_money',
+      currencies: ['XOF'],
+      countries: [country],
+      networks: Object.keys(networks),
+    }));
+  const capabilities = [...routes('collect', operators), ...routes('payout', payoutOperators)];
 
   async function call(step: Step, method: string, path: string, signal: AbortSignal, body?: Json) {
     const init: RequestInit = {
@@ -116,8 +146,8 @@ export function fedapay(options: FedaPayOptions): Connector {
 
   function toError(step: Step, thrown: unknown): PayenvError {
     if (thrown instanceof PayenvError) return thrown;
-    // Before the push, no customer prompt exists: money cannot move.
-    const beforeMoney = step === 'create' || step === 'token';
+    // Before the push (or the payout send), money cannot move.
+    const beforeMoney = BEFORE_MONEY.has(step);
 
     if (thrown instanceof FedaPayHttpError) {
       const code = httpCode(thrown, beforeMoney);
@@ -219,6 +249,53 @@ export function fedapay(options: FedaPayOptions): Connector {
       }
     },
 
+    async payout(request, context): Promise<ProviderResult> {
+      const { recipient } = request;
+      const mode = payoutOperators[recipient.country]?.[recipient.network];
+      if (!mode) {
+        throw new PayenvError(
+          'ROUTE_UNSUPPORTED',
+          `FedaPay payout mode not configured for ${recipient.network} / ${recipient.country}`,
+          { connectorId: id },
+        );
+      }
+
+      // 1. Create the payout. Nothing is sent yet.
+      let payoutId: string;
+      try {
+        const data = await call(
+          'payout',
+          'POST',
+          '/payouts',
+          context.signal,
+          payoutBody(request, mode),
+        );
+        const payout = unwrap(data, 'payout');
+        if (payout.id === undefined || payout.id === null) {
+          throw new PayenvError('PROVIDER_UNAVAILABLE', 'FedaPay returned no payout id', {
+            connectorId: id,
+            raw: data,
+          });
+        }
+        payoutId = String(payout.id);
+      } catch (thrown) {
+        throw toError('payout', thrown);
+      }
+      context.reportProviderRef(payoutId);
+
+      // 2. Start it. From here on, money may leave the merchant's balance.
+      try {
+        const data = await call('send', 'PUT', '/payouts/start', context.signal, {
+          payouts: [{ id: payoutId }],
+        });
+        return { status: 'pending', providerRef: payoutId, raw: data };
+      } catch (thrown) {
+        const error = toError('send', thrown);
+        if (error.retryClass !== 'ambiguous') throw error;
+        return { status: 'unknown', providerRef: payoutId, error, raw: error.raw };
+      }
+    },
+
     async getStatus(query, context): Promise<StatusResult> {
       if (query.providerRef === undefined) {
         // Without the transaction id we cannot prove anything: stay ambiguous.
@@ -226,14 +303,17 @@ export function fedapay(options: FedaPayOptions): Connector {
           connectorId: id,
         });
       }
+      const resource = query.operation === 'payout' ? 'payout' : 'transaction';
       let data: Json;
       try {
-        data = await call('status', 'GET', `/transactions/${query.providerRef}`, context.signal);
+        data = await call('status', 'GET', `/${resource}s/${query.providerRef}`, context.signal);
       } catch (thrown) {
         throw toError('status', thrown);
       }
-      const transaction = unwrap(data, 'transaction');
-      const { status, error } = transactionStatus(transaction, id);
+      const { status, error } =
+        resource === 'payout'
+          ? payoutStatus(unwrap(data, 'payout'), id)
+          : transactionStatus(unwrap(data, 'transaction'), id);
       return {
         found: true,
         status,
@@ -242,6 +322,24 @@ export function fedapay(options: FedaPayOptions): Connector {
         raw: data,
       };
     },
+  };
+}
+
+function payoutBody(request: PayoutRequest, mode: string): Json {
+  const { customer, recipient, amount } = request;
+  const fedapayCustomer: Json = {
+    // The money is sent to this phone number.
+    phone_number: { number: recipient.phone, country: recipient.country },
+  };
+  if (customer?.firstName) fedapayCustomer.firstname = customer.firstName;
+  if (customer?.lastName) fedapayCustomer.lastname = customer.lastName;
+  if (customer?.email) fedapayCustomer.email = customer.email;
+  return {
+    amount: amount.value,
+    currency: { iso: amount.currency },
+    mode,
+    customer: fedapayCustomer,
+    ...(request.description ? { description: request.description } : {}),
   };
 }
 
@@ -303,24 +401,9 @@ export function transactionStatus(
     last_error_code: lastErrorCode,
     last_error_message: lastErrorMessage,
   } = transaction;
-  const providerCode =
-    typeof lastErrorCode === 'string' && lastErrorCode !== '' ? lastErrorCode : undefined;
-
-  /** The failure reason: FedaPay's own code when it gives one, a sensible default otherwise. */
-  const reason = (fallback: PayenvErrorCode, what: string) => {
-    const code = (providerCode ? FEDAPAY_ERROR_CODES[providerCode] : undefined) ?? fallback;
-    const detail = providerCode
-      ? ` — ${FEDAPAY_ERROR_MESSAGES[providerCode] ?? 'FedaPay error'} (${providerCode})`
-      : '';
-    // The customer was involved: another provider would not change the outcome.
-    return new PayenvError(code, `FedaPay transaction ${what}${detail}`, {
-      connectorId,
-      retryClass: 'do_not_retry',
-      ...(providerCode ? { providerCode } : {}),
-      // Raw operator output (often a SOAP dump): kept for debugging, never serialized.
-      raw: { last_error_code: lastErrorCode, last_error_message: lastErrorMessage },
-    });
-  };
+  const providerCode = errorCode(lastErrorCode);
+  const reason = (fallback: PayenvErrorCode, what: string) =>
+    failure('transaction', what, fallback, lastErrorCode, lastErrorMessage, connectorId);
 
   switch (status) {
     case 'pending':
@@ -346,6 +429,61 @@ export function transactionStatus(
   }
 }
 
+/** Maps a FedaPay payout to a Payenv status. Statuses to verify: see QUIRKS.md. */
+export function payoutStatus(
+  payout: Json,
+  connectorId: string,
+): { status: PaymentStatus; error?: PayenvError } {
+  const { status, last_error_code: lastErrorCode, last_error_message: lastErrorMessage } = payout;
+  const reason = (fallback: PayenvErrorCode, what: string) =>
+    failure('payout', what, fallback, lastErrorCode, lastErrorMessage, connectorId);
+  switch (status) {
+    case 'sent':
+      return { status: 'succeeded' };
+    // Created, scheduled or being processed: never guessed as failed.
+    case 'pending':
+    case 'scheduled':
+    case 'started':
+    case 'processing':
+      return { status: 'pending' };
+    case 'failed':
+    case 'declined':
+      return { status: 'failed', error: reason('UNKNOWN_ERROR', String(status)) };
+    case 'canceled':
+      return { status: 'canceled', error: reason('UNKNOWN_ERROR', 'canceled') };
+    default:
+      return { status: 'unknown' };
+  }
+}
+
+function errorCode(value: unknown): string | undefined {
+  return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
+/** A failure reason: FedaPay's own code when it gives one, a sensible default otherwise. */
+function failure(
+  resource: 'transaction' | 'payout',
+  what: string,
+  fallback: PayenvErrorCode,
+  lastErrorCode: unknown,
+  lastErrorMessage: unknown,
+  connectorId: string,
+): PayenvError {
+  const providerCode = errorCode(lastErrorCode);
+  const code = (providerCode ? FEDAPAY_ERROR_CODES[providerCode] : undefined) ?? fallback;
+  const detail = providerCode
+    ? ` — ${FEDAPAY_ERROR_MESSAGES[providerCode] ?? 'FedaPay error'} (${providerCode})`
+    : '';
+  // Reported after the fact: never a reason to try another provider automatically.
+  return new PayenvError(code, `FedaPay ${resource} ${what}${detail}`, {
+    connectorId,
+    retryClass: 'do_not_retry',
+    ...(providerCode ? { providerCode } : {}),
+    // Raw operator output (often a SOAP dump): kept for debugging, never serialized.
+    raw: { last_error_code: lastErrorCode, last_error_message: lastErrorMessage },
+  });
+}
+
 function httpCode(
   error: FedaPayHttpError,
   beforeMoney: boolean,
@@ -353,15 +491,23 @@ function httpCode(
   const { status } = error;
   const message = (providerMessage(error.body) ?? '').toLowerCase();
 
+  // "Opération non autorisée" (also sent with HTTP 403): the operator, or payouts, are not
+  // enabled on the merchant account. Another provider may serve it.
+  if (status < 500 && (message.includes('non autoris') || message.includes('not authorized'))) {
+    return { code: 'ROUTE_UNSUPPORTED' };
+  }
   if (status === 401 || status === 403) return { code: 'AUTHENTICATION_FAILED' };
   if (status === 429) return { code: 'RATE_LIMITED' };
   if (status >= 500) {
     return beforeMoney ? { code: 'PROVIDER_UNAVAILABLE' } : { code: 'NETWORK_ERROR' };
   }
   // 4xx: the request was rejected, nothing was processed.
-  if (message.includes('non autoris') || message.includes('not authorized')) {
-    // Operator not activated on the merchant account: another provider may serve it.
-    return { code: 'ROUTE_UNSUPPORTED' };
+  if (
+    (error.step === 'payout' || error.step === 'send') &&
+    (message.includes('solde insuffisant') || message.includes('insufficient balance'))
+  ) {
+    // The merchant's FedaPay balance: another provider's balance may suffice.
+    return { code: 'INSUFFICIENT_BALANCE' };
   }
   if (status === 404 && error.step === 'status') {
     // Not authoritative enough to claim "no money moved".

@@ -111,7 +111,22 @@ Some payments stay `pending` for a long time (for example when an operator does 
 cancellation). See
 [Payments stuck in pending](../packages/connector-fedapay/README.md#payments-stuck-in-pending).
 
-## 6. Add a second provider (fallback)
+## 6. Send money (payouts)
+
+```ts
+const payout = await payenv.payout({
+  amount: { value: 2000, currency: 'XOF' },
+  recipient: { type: 'mobile_money', network: 'mtn', country: 'BJ', phone: '+22990000000' },
+  customer: { firstName: 'Ada', lastName: 'Lovelace', email: 'ada@example.com' },
+  idempotencyKey: 'withdrawal_42',
+});
+```
+
+Payouts have the same guarantees as collections: the same key never sends money twice, and
+Payenv only falls back to another provider when it is proven that no money was sent (for
+example, `INSUFFICIENT_BALANCE` on the first provider). Follow them with `refresh`.
+
+## 7. Add a second provider (fallback)
 
 Register several connectors: Payenv tries them in order and falls back **only when it is proven
 that no money moved** with the previous one.
@@ -142,7 +157,7 @@ the right amount. See [@payenv/connector-kkiapay](../packages/connector-kkiapay)
 
 More connectors are on the way: see [CONNECTORS.md](CONNECTORS.md).
 
-## 7. Before going live
+## 8. Before going live
 
 - [ ] Use `environment: 'live'` and a live key from a secret manager or environment variable.
 - [ ] **Use a persistent store.** The default in-memory store loses idempotency on restart and

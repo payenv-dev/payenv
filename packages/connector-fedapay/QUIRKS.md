@@ -75,6 +75,22 @@ What differs from what you would expect when reading the FedaPay documentation.
 - Transactions have a `merchant_reference` field. Whether it can be set on creation and
   used for lookups is still to verify (see below).
 
+## Payouts
+
+- ✅ **Verified on live payouts** (founder's production integration): create with
+  `POST /v1/payouts` (`mode`, `customer.phone_number`), then start with
+  `PUT /v1/payouts/start` and `{ "payouts": [{ "id": ... }] }`. Payout modes differ from
+  collection slugs: `mtn` (not `mtn_open`), `moov`, `sbin`. An empty merchant balance
+  answers "Solde insuffisant" → `INSUFFICIENT_BALANCE` (safe to fall back).
+- ✅ **Sandbox (2026-10-06)**: with payouts not enabled on the account, `POST /v1/payouts`
+  answers HTTP **403** `{ "message": "Opération non autorisée" }` → `ROUTE_UNSUPPORTED`.
+- Money can only leave the balance at the `start` call: errors before it are safe to fall
+  back; a timeout or 5xx on `start` is ambiguous and resolved with `GET /v1/payouts/:id`.
+- 🔍 To verify once payouts are enabled in the sandbox: the sandbox payout mode (assumed
+  `momo_test`, like collections), the payout statuses (mapped: `sent` → succeeded;
+  `pending`, `scheduled`, `started`, `processing` → pending; `failed`, `declined` →
+  failed; `canceled`), and the `start` response shape.
+
 ## 🔍 Still to verify
 
 - The full list of live transaction statuses. Mapped today: `pending`, `approved`,

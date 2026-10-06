@@ -3,6 +3,7 @@ import {
   type CollectRequest,
   type Connector,
   createPayenv,
+  type PayoutRequest,
   type ProviderResult,
 } from '@payenv/core';
 import { describe, expect, it } from 'vitest';
@@ -145,7 +146,11 @@ describe('fedapay connector — collect', () => {
   });
 
   it('declares only configured operators as capabilities', () => {
-    const connector = fedapay({ secretKey: 'sk', operators: { BJ: { mtn: 'mtn_open' } } });
+    const connector = fedapay({
+      secretKey: 'sk',
+      operators: { BJ: { mtn: 'mtn_open' } },
+      payoutOperators: {},
+    });
     expect(connector.capabilities()).toEqual([
       {
         operation: 'collect',
@@ -316,6 +321,154 @@ describe('fedapay connector — status', () => {
       ),
     ).rejects.toBeDefined();
     expect(server.calls).toHaveLength(0);
+  });
+});
+
+describe('fedapay connector — payouts', () => {
+  const payoutRoutes: Record<string, Handler> = {
+    'POST /payouts': () => ({
+      status: 200,
+      json: { 'v1/payout': { id: 777, reference: 'po_ref', status: 'pending' } },
+    }),
+    'PUT /payouts/start': () => ({ status: 200, json: { message: 'ok' } }),
+  };
+  const payoutRequest: PayoutRequest = {
+    amount: { value: 2000, currency: 'XOF' },
+    recipient: { type: 'mobile_money', network: 'mtn', country: 'BJ', phone: '+22990000000' },
+    customer: { firstName: 'Ada', lastName: 'Lovelace', email: 'ada@example.com' },
+    idempotencyKey: 'payout_1',
+  };
+  const payout = (connector: ReturnType<typeof fedapay>, ctx = context()) => {
+    if (!connector.payout) throw new Error('payout missing');
+    return connector.payout(payoutRequest, ctx);
+  };
+
+  it('creates the payout with the payout mode, then starts it', async () => {
+    const server = fakeFedaPay(payoutRoutes);
+    const ctx = context();
+
+    const result = await payout(
+      fedapay({ secretKey: 'sk', environment: 'live', fetch: server.fetch }),
+      ctx,
+    );
+
+    expect(server.calls.map((call) => `${call.method} ${call.url}`)).toEqual([
+      'POST https://api.fedapay.com/v1/payouts',
+      'PUT https://api.fedapay.com/v1/payouts/start',
+    ]);
+    expect(server.calls[0]?.body).toEqual({
+      amount: 2000,
+      currency: { iso: 'XOF' },
+      mode: 'mtn', // not mtn_open: payout slugs differ from collection slugs
+      customer: {
+        phone_number: { number: '+22990000000', country: 'BJ' },
+        firstname: 'Ada',
+        lastname: 'Lovelace',
+        email: 'ada@example.com',
+      },
+    });
+    expect(server.calls[1]?.body).toEqual({ payouts: [{ id: '777' }] });
+    expect(result).toMatchObject({ status: 'pending', providerRef: '777' });
+    expect(ctx.reported).toEqual(['777']);
+  });
+
+  it('uses momo_test in the sandbox', async () => {
+    const server = fakeFedaPay(payoutRoutes);
+    await payout(fedapay({ secretKey: 'sk', fetch: server.fetch }));
+    expect(server.calls[0]?.body).toMatchObject({ mode: 'momo_test' });
+  });
+
+  it('payouts not enabled on the account → ROUTE_UNSUPPORTED (real sandbox answer)', async () => {
+    const server = fakeFedaPay({
+      'POST /payouts': () => ({
+        status: 403,
+        json: { message: 'Opération non autorisée', errors: {}, model: null },
+      }),
+    });
+    await expect(payout(fedapay({ secretKey: 'sk', fetch: server.fetch }))).rejects.toMatchObject({
+      code: 'ROUTE_UNSUPPORTED',
+      retryClass: 'safe_to_fallback',
+    });
+  });
+
+  it('insufficient merchant balance when starting → INSUFFICIENT_BALANCE (safe)', async () => {
+    const server = fakeFedaPay({
+      ...payoutRoutes,
+      'PUT /payouts/start': () => ({ status: 400, json: { message: 'Solde insuffisant' } }),
+    });
+    await expect(payout(fedapay({ secretKey: 'sk', fetch: server.fetch }))).rejects.toMatchObject({
+      code: 'INSUFFICIENT_BALANCE',
+      retryClass: 'safe_to_fallback',
+    });
+  });
+
+  it.each([
+    ['HTTP 502', () => ({ status: 502, json: {} })],
+    ['network failure', () => Promise.reject(new TypeError('socket hang up'))],
+  ] as const)('%s when starting → unknown with the payout id', async (_label, handler) => {
+    const server = fakeFedaPay({ ...payoutRoutes, 'PUT /payouts/start': handler as Handler });
+    const result = await payout(fedapay({ secretKey: 'sk', fetch: server.fetch }));
+    expect(result).toMatchObject({ status: 'unknown', providerRef: '777' });
+    expect(result.error?.retryClass).toBe('ambiguous');
+  });
+
+  it.each([
+    ['sent', 'succeeded'],
+    ['pending', 'pending'],
+    ['started', 'pending'],
+    ['failed', 'failed'],
+    ['something_new', 'unknown'],
+  ])('payout status "%s" → %s', async (fedapayStatus, status) => {
+    const server = fakeFedaPay({
+      'GET /payouts/777': () => ({
+        status: 200,
+        json: { 'v1/payout': { id: 777, status: fedapayStatus } },
+      }),
+    });
+    const result = await fedapay({ secretKey: 'sk', fetch: server.fetch }).getStatus(
+      { operation: 'payout', reference: 'att_1', providerRef: '777' },
+      { signal: new AbortController().signal },
+    );
+    expect(result).toMatchObject({ found: true, status });
+  });
+
+  it('never sends twice through Payenv when the start call times out', async () => {
+    const server = fakeFedaPay({
+      ...payoutRoutes,
+      'PUT /payouts/start': () => ({ status: 504, json: {} }),
+      'GET /payouts/777': () => ({
+        status: 200,
+        json: { 'v1/payout': { id: 777, status: 'started' } },
+      }),
+    });
+    let otherCalls = 0;
+    const other: Connector = {
+      id: 'other',
+      capabilities: () => fedapay({ secretKey: 'sk' }).capabilities(),
+      async collect(): Promise<ProviderResult> {
+        return { status: 'pending' };
+      },
+      async payout(): Promise<ProviderResult> {
+        otherCalls += 1;
+        return { status: 'pending', providerRef: 'other_1' };
+      },
+      async getStatus() {
+        return { found: false as const };
+      },
+    };
+    const payenv = createPayenv({
+      connectors: [fedapay({ secretKey: 'sk', fetch: server.fetch }), other],
+      statusCheckDelaysMs: [0],
+    });
+
+    const payment = await payenv.payout(payoutRequest);
+
+    expect(payment).toMatchObject({
+      status: 'pending',
+      connectorId: 'fedapay',
+      providerRef: '777',
+    });
+    expect(otherCalls).toBe(0);
   });
 });
 

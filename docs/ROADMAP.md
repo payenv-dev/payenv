@@ -28,7 +28,8 @@
 ## Phase 2 — Real fallback (`v0.2.0`)
 
 - [ ] Second and third connectors (e.g. Kkiapay, CinetPay)
-- [ ] Payouts and refunds in the unified API
+- [x] Payouts in the unified API (FedaPay)
+- [ ] Refunds in the unified API
 - [ ] `@payenv/store-postgres`
 - [ ] Circuit breaker
 - [ ] Normalized webhook handling with deduplication

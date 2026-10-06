@@ -1,6 +1,8 @@
 export {
   DEFAULT_OPERATORS,
+  DEFAULT_PAYOUT_OPERATORS,
   DEFAULT_SANDBOX_OPERATORS,
+  DEFAULT_SANDBOX_PAYOUT_OPERATORS,
   type FedaPayEnvironment,
   type FedaPayOperators,
   type FedaPayOptions,
