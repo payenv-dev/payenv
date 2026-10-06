@@ -9,6 +9,8 @@ Before `1.0.0`, minor versions may contain breaking changes.
 ## [Unreleased]
 
 ### Added
+- 2026-10-06 — `@payenv/core`: `toE164(phone, country)` converts numbers typed by customers
+  (e.g. `61 00 00 00` in Benin) to E.164, with per-country trunk-prefix rules.
 - 2026-10-05 — `@payenv/core`: payments started by the customer in a widget
   (`nextAction.type === 'widget'`, `supportedWidgets`, `Capability.widget`) and
   `payenv.confirm`, which verifies the provider transaction's merchant reference and

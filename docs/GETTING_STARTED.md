@@ -48,6 +48,14 @@ console.log(payment.status); // 'pending': the customer confirms on their phone
 In the FedaPay sandbox, `+22964000001` and `+22966000001` succeed; any other number simulates
 a failed payment. In live mode, the customer receives a USSD prompt and confirms with their PIN.
 
+Payenv only accepts E.164 phone numbers. Convert what the customer typed with `toE164`:
+
+```ts
+import { toE164 } from '@payenv/core';
+
+toE164('61 00 00 00', 'BJ'); // '+22961000000'
+```
+
 Invalid requests throw a `PayenvError` (`INVALID_PHONE`, `NO_ROUTE`, …). Everything that happens
 with the provider is returned in the payment instead.
 
