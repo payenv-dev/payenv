@@ -9,6 +9,9 @@
 - **API**: `https://api-sandbox.kkiapay.me` / `https://api.kkiapay.me`, headers
   `x-api-key` (public key), `x-private-key`, `x-secret-key`. The sandbox answers HTTP 401
   to invalid keys (observed).
+- **Unknown transaction id** (verified in the sandbox, 2026-10-06): HTTP **400** with
+  `{ "status": "TRANSACTION_NOT_FOUND" }` (not 404). Only this explicit answer is
+  treated as "not found".
 - **Status response** fields include `status` (`SUCCESS`, `FAILED`…), `amount`, `fees`,
   `feeSupportedBy`, `failureCode`, `failureMessage`, `partnerId`, `transactionId`,
   `client.phone`.
@@ -27,7 +30,5 @@
   `payenv.confirm` relies on it: without it, confirmation is refused (safe).
 - That `amount` in status responses is the amount requested (not including fees), for
   both `feeSupportedBy` values.
-- The HTTP status for an unknown `transactionId` (assumed 404 → "not found"; anything
-  else is treated as an error, which is safe).
 - The phone format the widget expects (sent today without `+`, e.g. `22961000000`).
 - Whether a `PENDING` status exists.

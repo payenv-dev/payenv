@@ -137,7 +137,9 @@ export function kkiapay(options: KkiapayOptions): Connector {
         });
       }
       const data = await readJson(response);
-      if (response.status === 404) return { found: false, raw: data };
+      // Verified in the sandbox: HTTP 400 with { "status": "TRANSACTION_NOT_FOUND" }.
+      // Only this explicit answer counts as "not found", whatever the HTTP status.
+      if (data.status === 'TRANSACTION_NOT_FOUND') return { found: false, raw: data };
       if (!response.ok) {
         throw new PayenvError(
           response.status === 401 || response.status === 403
