@@ -6,6 +6,7 @@ export type {
   Customer,
   NextAction,
   Operation,
+  PayoutRequest,
   ProviderResult,
   StatusContext,
   StatusQuery,
