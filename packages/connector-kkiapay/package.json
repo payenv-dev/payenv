@@ -1,6 +1,6 @@
 {
   "name": "@payenv/connector-kkiapay",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Kkiapay connector for Payenv (mobile money via the Kkiapay widget, verified server-side).",
   "license": "Apache-2.0",
   "author": "Jules Mahounou (https://github.com/jules-mahounou)",
