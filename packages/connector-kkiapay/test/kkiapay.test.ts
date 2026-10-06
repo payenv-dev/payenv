@@ -24,7 +24,7 @@ function fakeKkiapay(transactions: Record<string, Record<string, unknown>>) {
     const transaction = transactions[body.transactionId];
     return transaction
       ? new Response(JSON.stringify(transaction), { status: 200 })
-      : new Response(JSON.stringify({ reason: 'Transaction Not Found' }), { status: 404 });
+      : new Response(JSON.stringify({ status: 'TRANSACTION_NOT_FOUND' }), { status: 400 });
   }) as typeof globalThis.fetch;
   return { fetch, calls };
 }
