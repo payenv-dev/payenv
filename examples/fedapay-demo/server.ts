@@ -28,6 +28,7 @@ import {
   PayenvError,
   type PayenvOptions,
   type Payment,
+  toE164,
 } from '@payenv/core';
 
 const live = process.env.DEMO_LIVE === 'yes';
@@ -145,7 +146,13 @@ async function route(request: IncomingMessage, response: ServerResponse): Promis
       const client = body.outage === 'on' ? payenvWithOutage : payenv;
       const payment = await client.collect({
         amount: { value: Number(body.amount), currency: 'XOF' },
-        method: { type: 'mobile_money', network: body.network, country: 'BJ', phone: body.phone },
+        // Customers type local numbers: convert to E.164 before calling Payenv.
+        method: {
+          type: 'mobile_money',
+          network: body.network,
+          country: 'BJ',
+          phone: toE164(body.phone, 'BJ'),
+        },
         customer: { firstName: 'Demo', lastName: 'Payenv', email: 'demo@example.com' },
         description: live ? 'Payenv demo (live test)' : 'Payenv demo',
         idempotencyKey: `demo_${Date.now()}`,
@@ -315,12 +322,12 @@ ${live ? `<p class="live">⚠️ Mode LIVE : <strong>vrai argent</strong>. Monta
   <label>Réseau
     <select name="network"><option value="mtn">MTN</option><option value="moov">Moov</option><option value="celtiis">Celtiis</option></select>
   </label>
-  <label>Téléphone <input name="phone" value="${live ? '' : '+22964000001'}" placeholder="+229…" required></label>
+  <label>Téléphone <input name="phone" value="${live ? '' : '64000001'}" placeholder="61 00 00 00 ou +229…" required></label>
   <span class="hint">${live ? 'Votre vrai numéro, au format international (+229…). Vous recevrez une demande de validation USSD.' : 'Sandbox : +22964000001 ou +22966000001 = succès · tout autre numéro = échec'}</span>
   ${
     withKkiapay
       ? `<label class="check"><input type="checkbox" name="outage"> Simuler une panne FedaPay (Payenv bascule vers le widget Kkiapay)</label>
-  <span class="hint">Widget Kkiapay (sandbox) : 61000000 ou 97000000 (MTN) = succès · 61000002 = fonds insuffisants</span>`
+  <span class="hint">Widget Kkiapay (sandbox) : MTN 61000000 · Moov 68000000 = succès · …02 = fonds insuffisants</span>`
       : ''
   }
   <button>Payer</button>
@@ -344,6 +351,20 @@ ${withKkiapay ? '<script src="https://cdn.kkiapay.me/k.js"></script>' : ''}
   if (window.addSuccessListener) {
     // The widget reports a transaction id; the server verifies it before trusting it.
     addSuccessListener((response) => confirmWidget(response.transactionId));
+  }
+  if (window.addFailedListener) {
+    // No money moved: the payment stays open, the customer can retry in the widget.
+    addFailedListener(() => {
+      document.getElementById('message').textContent =
+        'Le paiement a échoué dans le widget. Aucun argent n'a bougé : le client peut réessayer.';
+    });
+  }
+  const outage = form.querySelector('[name="outage"]');
+  if (outage) {
+    // Each provider has its own sandbox test numbers.
+    outage.addEventListener('change', () => {
+      form.querySelector('[name="phone"]').value = outage.checked ? '61000000' : '64000001';
+    });
   }
   function openWidget(action) {
     if (action.provider === 'kkiapay' && window.openKkiapayWidget) openKkiapayWidget(action.params);

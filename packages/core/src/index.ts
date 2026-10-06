@@ -39,6 +39,7 @@ export {
 } from './money.js';
 export { createPayenv, type Payenv, type PayenvEvent, type PayenvOptions } from './payenv.js';
 export type { Attempt, AttemptOutcome, Payment } from './payment.js';
+export { toE164 } from './phone.js';
 export { priority, type RoutingStrategy, supports } from './router.js';
 export { canTransition, isTerminal, type PaymentStatus, type TerminalStatus } from './status.js';
 export { createMemoryStore, type Store } from './store.js';
