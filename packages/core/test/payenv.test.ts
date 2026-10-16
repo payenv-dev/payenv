@@ -194,6 +194,24 @@ describe('refresh', () => {
     });
   });
 
+  it('keeps the redirect while the customer has not paid yet', async () => {
+    const redirect = { type: 'redirect', url: 'https://pay.example/abc' } as const;
+    let status: 'requires_action' | 'pending' = 'requires_action';
+    const a = fakeConnector(
+      'a',
+      async () => ({ status: 'requires_action', providerRef: 'prov_1', nextAction: redirect }),
+      async () => ({ found: true, status }),
+    );
+    const payenv = createPayenv({ connectors: [a], ...fast });
+    const request = mtnRequest();
+    await payenv.collect(request);
+
+    expect((await payenv.refresh(request.idempotencyKey)).nextAction).toEqual(redirect);
+
+    status = 'pending';
+    expect((await payenv.refresh(request.idempotencyKey)).nextAction).toBeUndefined();
+  });
+
   it('never changes a terminal payment', async () => {
     const a = fakeConnector(
       'a',

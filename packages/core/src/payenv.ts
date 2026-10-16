@@ -373,7 +373,11 @@ export function createPayenv(options: PayenvOptions): Payenv {
       attempt.providerRef = status.providerRef;
       payment.providerRef = status.providerRef;
     }
-    setOptional(payment, 'nextAction', status.nextAction);
+    // Still waiting for the customer: keep the action they have to follow (e.g. a redirect
+    // URL) unless the provider gives a new one.
+    if (next !== 'requires_action' || status.nextAction !== undefined) {
+      setOptional(payment, 'nextAction', status.nextAction);
+    }
     if (status.error) {
       attempt.error = status.error.toJSON();
       payment.error = attempt.error;
