@@ -78,6 +78,7 @@ débité.
 | [`@payenv/connector-fedapay`](packages/connector-fedapay) | Paiement mobile money et payouts (MTN, Moov, Celtiis), webhooks signés | 🇧🇯 Bénin |
 | [`@payenv/connector-kkiapay`](packages/connector-kkiapay) | Paiements dans le widget Kkiapay, vérifiés côté serveur (MTN, Moov) | 🇧🇯 Bénin |
 | [`@payenv/connector-cinetpay`](packages/connector-cinetpay) | Paiement mobile money, page de paiement hébergée, payouts | 🇧🇯 🇧🇫 🇨🇮 🇲🇱 🇳🇪 🇸🇳 🇹🇬 🇨🇲 🇬🇳 |
+| [`@payenv/store-postgres`](packages/store-postgres) | Stockage PostgreSQL : idempotence partagée entre serveurs, recherche pour les webhooks et la réconciliation | — |
 
 ```sh
 npm install @payenv/core @payenv/connector-fedapay
@@ -109,12 +110,12 @@ que contient chaque version npm.
 | Ordre de routage, ou votre propre stratégie | `priority([...])`, `routing: (candidates, request) => …` |
 | Statuts et erreurs unifiés, avec le code d'origine du fournisseur | `payment.status`, `payment.error` |
 | Événements (tentatives, bascules) pour vos logs et métriques | `onEvent` |
-| Stockage remplaçable (votre base de données ; en mémoire par défaut) | `Store` |
+| Stockage PostgreSQL, ou toute base via l'interface `Store` (en mémoire par défaut) | `createPostgresStore`, `Store` |
+| Retrouver un paiement depuis un webhook, lister ceux à réconcilier (PostgreSQL) | `store.findByProviderRef`, `store.listOpen` |
 | Vérification et lecture des webhooks, par connecteur | ex. `verifyFedaPayWebhook` |
 | Numéros saisis par les clients convertis en E.164 | `toE164('61 00 00 00', 'BJ')` |
 
-**Prévues** (voir la [feuille de route](docs/ROADMAP.md)) : remboursements,
-`@payenv/store-postgres`, coupe-circuit, webhooks unifiés avec déduplication, stratégies
+**Prévues** (voir la [feuille de route](docs/ROADMAP.md)) : remboursements, coupe-circuit, webhooks unifiés avec déduplication, stratégies
 `weighted` / `cheapest` / `bestSuccessRate`, d'autres connecteurs (PayDunya, Flutterwave,
 Paystack, Stripe…), un portage PHP / Laravel.
 
@@ -151,8 +152,9 @@ pnpm demo        # compile et lance la démo sur http://localhost:3000
 pnpm changeset   # décrire votre changement pour la prochaine version
 ```
 
-Les tests sandbox sont optionnels : copiez `.env.example` en `.env` (ignoré par git) et
-renseignez des identifiants **sandbox**.
+Les tests sandbox et base de données sont optionnels : copiez `.env.example` en `.env`
+(ignoré par git) et renseignez des identifiants **sandbox** et l'URL d'une base
+PostgreSQL jetable.
 
 ## Documentation
 

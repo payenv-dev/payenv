@@ -171,23 +171,23 @@ All supported and planned providers: [CONNECTORS.md](CONNECTORS.md).
 
 - [ ] Use `environment: 'live'` and a live key from a secret manager or environment variable.
 - [ ] **Use a persistent store.** The default in-memory store loses idempotency on restart and
-      is not shared between instances. Implement the `Store` interface on your database. Its
-      `create` must be atomic, for example with a unique constraint on the idempotency key:
+      is not shared between instances. With PostgreSQL, use
+      [@payenv/store-postgres](../packages/store-postgres):
 
       ```ts
-      import type { Store } from '@payenv/core';
+      import pg from 'pg';
+      import { createPostgresStore } from '@payenv/store-postgres';
 
-      const store: Store = {
-        // INSERT ... ON CONFLICT (idempotency_key) DO NOTHING → true if a row was inserted
-        async create(payment) { /* ... */ },
-        async get(idempotencyKey) { /* SELECT ... */ },
-        async update(payment) { /* UPDATE ... */ },
-      };
+      const store = createPostgresStore({ client: new pg.Pool({ connectionString: process.env.DATABASE_URL }) });
+      await store.migrate();
       createPayenv({ connectors, store });
       ```
+
+      For another database, implement the `Store` interface (`create`, `get`, `update`).
+      Its `create` must be atomic, for example with a unique constraint on the idempotency key.
+- [ ] Reconcile open payments regularly: `store.listOpen()`, then `payenv.refresh` on each.
 - [ ] Verify every webhook signature and pass the **raw** body.
 - [ ] Never log raw provider responses or webhooks: they contain personal data.
-- [ ] Reconcile `pending` and `unknown` payments regularly with `refresh`.
 
 ## Try the demo
 

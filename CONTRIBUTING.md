@@ -79,12 +79,15 @@ packages/
   connector-fedapay/   @payenv/connector-fedapay
   connector-kkiapay/   @payenv/connector-kkiapay
   connector-cinetpay/  @payenv/connector-cinetpay
+  store-postgres/      @payenv/store-postgres
 examples/
   fedapay-demo/        runnable demo: pnpm demo
 ```
 
-Sandbox tests are opt-in: copy `.env.example` to `.env` (git-ignored) and fill in
-**sandbox** credentials. Without them, those tests are skipped.
+Sandbox and database tests are opt-in: copy `.env.example` to `.env` (git-ignored) and
+fill in **sandbox** credentials and `PAYENV_TEST_DATABASE_URL` (a throwaway PostgreSQL
+database: tests create and drop their own tables). Without them, those tests are skipped.
+CI runs the database tests against PostgreSQL 16.
 
 The stack is TypeScript 7 (`tsc`), Vitest for tests, and Biome for lint and format.
 

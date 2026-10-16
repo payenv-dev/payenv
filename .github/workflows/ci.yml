@@ -15,6 +15,23 @@ jobs:
     strategy:
       matrix:
         node: [20, 22, 24]
+    services:
+      # Throwaway database for @payenv/store-postgres tests.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: payenv
+          POSTGRES_PASSWORD: payenv
+          POSTGRES_DB: payenv_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U payenv"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PAYENV_TEST_DATABASE_URL: postgres://payenv:payenv@localhost:5432/payenv_test
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

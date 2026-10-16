@@ -30,7 +30,7 @@
 - [x] Second and third connectors (Kkiapay, CinetPay — CinetPay still to verify in the sandbox)
 - [x] Payouts in the unified API (FedaPay, CinetPay — CinetPay still to verify in the sandbox)
 - [ ] Refunds in the unified API
-- [ ] `@payenv/store-postgres`
+- [x] `@payenv/store-postgres`
 - [ ] Circuit breaker
 - [ ] Normalized webhook handling with deduplication
 

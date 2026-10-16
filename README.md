@@ -77,6 +77,7 @@ only moves on if FedaPay confirms nothing was charged.
 | [`@payenv/connector-fedapay`](packages/connector-fedapay) | Mobile money push and payouts (MTN, Moov, Celtiis), signed webhooks | 🇧🇯 Benin |
 | [`@payenv/connector-kkiapay`](packages/connector-kkiapay) | Payments in the Kkiapay widget, verified server-side (MTN, Moov) | 🇧🇯 Benin |
 | [`@payenv/connector-cinetpay`](packages/connector-cinetpay) | Mobile money push, hosted payment page, payouts | 🇧🇯 🇧🇫 🇨🇮 🇲🇱 🇳🇪 🇸🇳 🇹🇬 🇨🇲 🇬🇳 |
+| [`@payenv/store-postgres`](packages/store-postgres) | PostgreSQL store: idempotency shared by all servers, lookups for webhooks and reconciliation | — |
 
 ```sh
 npm install @payenv/core @payenv/connector-fedapay
@@ -108,12 +109,12 @@ for what each npm version contains.
 | Routing order, or your own strategy function | `priority([...])`, `routing: (candidates, request) => …` |
 | Normalized statuses and errors, with the provider's own code kept | `payment.status`, `payment.error` |
 | Lifecycle events (attempts, fallbacks) for your logs and metrics | `onEvent` |
-| Pluggable store (bring your database; in-memory by default) | `Store` |
+| PostgreSQL store, or any database through the `Store` interface (in-memory by default) | `createPostgresStore`, `Store` |
+| Find a payment from a webhook, list payments to reconcile (PostgreSQL) | `store.findByProviderRef`, `store.listOpen` |
 | Webhook verification and parsing, per connector | e.g. `verifyFedaPayWebhook` |
 | Phone numbers typed by customers converted to E.164 | `toE164('61 00 00 00', 'BJ')` |
 
-**Planned** (see the [roadmap](docs/ROADMAP.md)): refunds, `@payenv/store-postgres`,
-circuit breaker, normalized webhook handling with deduplication, `weighted` / `cheapest` /
+**Planned** (see the [roadmap](docs/ROADMAP.md)): refunds, circuit breaker, normalized webhook handling with deduplication, `weighted` / `cheapest` /
 `bestSuccessRate` strategies, more connectors (PayDunya, Flutterwave, Paystack, Stripe…),
 a PHP / Laravel port.
 
@@ -149,8 +150,8 @@ pnpm demo        # build and start the web demo on http://localhost:3000
 pnpm changeset   # describe your change for the next release
 ```
 
-Sandbox tests are opt-in: copy `.env.example` to `.env` (git-ignored) and fill in
-**sandbox** credentials.
+Sandbox and database tests are opt-in: copy `.env.example` to `.env` (git-ignored) and
+fill in **sandbox** credentials and a throwaway PostgreSQL database URL.
 
 ```
 packages/
@@ -158,6 +159,7 @@ packages/
   connector-fedapay/    @payenv/connector-fedapay
   connector-kkiapay/    @payenv/connector-kkiapay
   connector-cinetpay/   @payenv/connector-cinetpay
+  store-postgres/       @payenv/store-postgres
 examples/
   fedapay-demo/         runnable web demo
 docs/                   guides, architecture, decision records

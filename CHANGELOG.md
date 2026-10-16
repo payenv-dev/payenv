@@ -9,6 +9,9 @@ Before `1.0.0`, minor versions may contain breaking changes.
 ## [Unreleased]
 
 ### Added
+- 2026-10-16 — `@payenv/store-postgres`: PostgreSQL store. Atomic `create` (one charge per
+  idempotency key across servers), settled payments never overwritten by a stale write,
+  `findByProviderRef` for webhooks and `listOpen` for reconciliation jobs.
 - 2026-10-16 — `@payenv/connector-cinetpay`: payouts by CinetPay transfer (API v1) in nine
   countries, from a separate payout methods table, and payout status lookups. A too-low
   CinetPay balance maps to `INSUFFICIENT_BALANCE` (safe to fall back).

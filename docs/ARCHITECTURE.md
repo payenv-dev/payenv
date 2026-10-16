@@ -198,8 +198,8 @@ this section is **(planned)**.
 
 Payenv needs a small amount of state (payments, attempts, idempotency keys,
 processed webhook IDs, success-rate stats). The store is an interface with
-adapters: `memory` (dev/tests, built into the core) today; `postgres`, `redis`,
-`sqlite`, … are planned, and any database can be used by implementing the three-method
+adapters: `memory` (dev/tests, built into the core) and `postgres`
+([@payenv/store-postgres](../packages/store-postgres)); `redis`, `sqlite`, … may follow, and any database can be used by implementing the three-method
 `Store` interface. Its `create` operation must be atomic, so that two concurrent calls
 with the same idempotency key can never both start a charge.
 The integrator owns the store and its data.
@@ -219,7 +219,7 @@ The integrator owns the store and its data.
 @payenv/connector-fedapay    one package per connector
 @payenv/connector-kkiapay    payments started in the Kkiapay widget, verified server-side
 @payenv/connector-cinetpay   direct push or CinetPay's hosted page, and transfers, nine countries
-@payenv/store-postgres       persistent stores, one package each (planned)
+@payenv/store-postgres       persistent stores, one package each
 ```
 
 ## Open questions
