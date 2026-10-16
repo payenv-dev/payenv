@@ -210,6 +210,7 @@ The integrator owns the store and its data.
                              and an in-memory store for development and tests
 @payenv/connector-fedapay    one package per connector
 @payenv/connector-kkiapay    payments started in the Kkiapay widget, verified server-side
+@payenv/connector-cinetpay   direct push or CinetPay's hosted page, nine countries
 @payenv/store-postgres       persistent stores, one package each
 ```
 
