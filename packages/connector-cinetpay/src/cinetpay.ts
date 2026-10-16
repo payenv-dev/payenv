@@ -5,6 +5,7 @@ import {
   type CurrencyCode,
   type MobileMoneyNetwork,
   type NextAction,
+  type Operation,
   PayenvError,
   type PayenvErrorCode,
   type PaymentStatus,
@@ -45,6 +46,24 @@ export const DEFAULT_METHODS: CinetPayMethods = {
 };
 
 /**
+ * Networks paid out by transfer (`POST /v1/transfer`), from the official SDK's operator
+ * table. A transfer needs nothing from the recipient, so Orange Money and Wave are
+ * included. Expresso (Senegal) and Zamani (Niger) have no Payenv network yet: add them
+ * with the `payoutMethods` option.
+ */
+export const DEFAULT_PAYOUT_METHODS: CinetPayMethods = {
+  BJ: { mtn: 'MTN_BJ', moov: 'MOOV_BJ' },
+  BF: { orange: 'OM_BF', moov: 'MOOV_BF', wave: 'WAVE_BF' },
+  CI: { orange: 'OM_CI', mtn: 'MTN_CI', moov: 'MOOV_CI', wave: 'WAVE_CI' },
+  CM: { orange: 'OM_CM', mtn: 'MTN_CM' },
+  GN: { orange: 'OM_GN', mtn: 'MTN_GN' },
+  ML: { orange: 'OM_ML', moov: 'MOOV_ML' },
+  NE: { airtel: 'AIRTEL_NE', moov: 'MOOV_NE' },
+  SN: { orange: 'OM_SN', free: 'FREE_SN', wave: 'WAVE_SN' },
+  TG: { moov: 'MOOV_TG', togocom: 'TMONEY_TG' },
+};
+
+/**
  * Currency of each CinetPay country. Only currencies without a minor unit are listed:
  * CinetPay amounts are whole numbers (RD Congo's CDF and USD are not supported yet).
  */
@@ -63,6 +82,10 @@ export const COUNTRY_CURRENCIES: Readonly<Record<CountryCode, CurrencyCode>> = {
 /** Amount limits of a CinetPay payment (official SDK validation). */
 export const MIN_AMOUNT = 100;
 export const MAX_AMOUNT = 2_500_000;
+
+/** Amount limits of a CinetPay transfer (official SDK validation). */
+export const MIN_PAYOUT_AMOUNT = 100;
+export const MAX_PAYOUT_AMOUNT = 1_500_000;
 
 export interface CinetPayOptions {
   /**
@@ -87,6 +110,12 @@ export interface CinetPayOptions {
    * Pass `{}` to only offer CinetPay's hosted page.
    */
   methods?: CinetPayMethods;
+  /**
+   * Networks paid out by transfer, per country. Defaults to
+   * {@link DEFAULT_PAYOUT_METHODS}. Pass `{}` to disable payouts. Transfers must be
+   * enabled on the CinetPay account, and are paid from its balance in that country.
+   */
+  payoutMethods?: CinetPayMethods;
   /** Offer CinetPay's hosted page (`hosted_page` method). Defaults to `true`. */
   hostedPage?: boolean;
   /** Language of CinetPay's pages. Defaults to `fr`. */
@@ -116,10 +145,11 @@ const CODE = {
 export type Json = Record<string, unknown>;
 
 /**
- * Steps of a call. Money can only move during `init` of a direct push: a hosted-page
- * payment waits for the customer on a page they have not been sent to yet.
+ * Steps of a call. Money can only move during `init` of a direct push (a hosted-page
+ * payment waits for the customer on a page they have not been sent to yet) and during
+ * `transfer`.
  */
-type Step = 'login' | 'init' | 'status';
+type Step = 'login' | 'init' | 'transfer' | 'status';
 
 class CinetPayApiError extends Error {
   constructor(
@@ -141,9 +171,10 @@ class CinetPayApiError extends Error {
  * - `mobile_money`: a direct push to the customer's phone, like FedaPay.
  * - `hosted_page`: the customer is redirected to CinetPay's page (`redirect` next action)
  *   and chooses how to pay there (Orange Money, Wave, cards…).
+ * - Payouts: a transfer from the merchant's CinetPay balance to a mobile money number.
  *
  * The CinetPay `merchant_transaction_id` is derived from the attempt's reference, so a
- * payment can always be looked up, even after a timeout.
+ * payment or a payout can always be looked up, even after a timeout.
  */
 export function cinetpay(options: CinetPayOptions): Connector {
   const countries = Object.keys(options.credentials ?? {});
@@ -166,6 +197,7 @@ export function cinetpay(options: CinetPayOptions): Connector {
   const environment = options.environment ?? 'sandbox';
   const baseUrl = BASE_URLS[environment];
   const methods = options.methods ?? DEFAULT_METHODS;
+  const payoutMethods = options.payoutMethods ?? DEFAULT_PAYOUT_METHODS;
   const doFetch = options.fetch ?? globalThis.fetch;
 
   const capabilities: Capability[] = [];
@@ -191,6 +223,21 @@ export function cinetpay(options: CinetPayOptions): Connector {
       });
     }
   }
+  for (const country of countries) {
+    const currency = COUNTRY_CURRENCIES[country];
+    const networks = Object.keys(payoutMethods[country] ?? {});
+    if (currency === undefined || networks.length === 0) continue;
+    capabilities.push({
+      operation: 'payout',
+      method: 'mobile_money',
+      currencies: [currency],
+      countries: [country],
+      networks,
+    });
+  }
+
+  const notifyUrlFor = (idempotencyKey: string) =>
+    typeof options.notifyUrl === 'function' ? options.notifyUrl(idempotencyKey) : options.notifyUrl;
 
   const tokens = new Map<CountryCode, { token: string; expiresAt: number }>();
   /** Country of each attempt started by this instance, to look it up directly. */
@@ -293,18 +340,23 @@ export function cinetpay(options: CinetPayOptions): Connector {
         });
   }
 
-  /** Looks a payment up in one country. `undefined` means CinetPay has no record of it. */
+  /**
+   * Looks a payment (or a transfer) up in one country. `undefined` means CinetPay has no
+   * record of it.
+   */
   async function lookup(
+    operation: Operation,
     country: CountryCode,
     identifier: string,
     signal: AbortSignal,
   ): Promise<Json | undefined> {
+    const resource = operation === 'payout' ? 'transfer' : 'payment';
     let response: { httpStatus: number; data: Json };
     try {
       response = await call(
         country,
         'GET',
-        `/v1/payment/${encodeURIComponent(identifier)}`,
+        `/v1/${resource}/${encodeURIComponent(identifier)}`,
         signal,
       );
     } catch (thrown) {
@@ -313,7 +365,8 @@ export function cinetpay(options: CinetPayOptions): Connector {
     const { httpStatus, data } = response;
     // Only CinetPay's explicit answer counts as "not found", not a bare HTTP 404.
     if (data.code === CODE.NOT_FOUND || data.status === 'NOT_FOUND') return undefined;
-    if (httpStatus >= 400 || !isTransactionStatus(apiStatus(data))) {
+    const known = operation === 'payout' ? isTransferStatus : isTransactionStatus;
+    if (httpStatus >= 400 || !known(apiStatus(data))) {
       throw toError('status', false, new CinetPayApiError('status', httpStatus, data));
     }
     return data;
@@ -366,10 +419,7 @@ export function cinetpay(options: CinetPayOptions): Connector {
       }
 
       const merchantReference = merchantTransactionId(context.reference);
-      const notifyUrl =
-        typeof options.notifyUrl === 'function'
-          ? options.notifyUrl(request.idempotencyKey)
-          : options.notifyUrl;
+      const notifyUrl = notifyUrlFor(request.idempotencyKey);
       const returnUrl =
         method.type === 'hosted_page' ? method.returnUrl : (options.returnUrl ?? notifyUrl);
       const body: Json = {
@@ -463,22 +513,67 @@ export function cinetpay(options: CinetPayOptions): Connector {
       };
     },
 
-    async getStatus(query, context): Promise<StatusResult> {
-      if (query.operation !== 'collect') {
-        throw new PayenvError('ROUTE_UNSUPPORTED', 'CinetPay connector has no payouts yet', {
-          connectorId: id,
-        });
+    async payout(request, context): Promise<ProviderResult> {
+      const { recipient, amount } = request;
+      const country = recipient.country;
+      const paymentMethod = payoutMethods[country]?.[recipient.network];
+      if (options.credentials[country] === undefined || paymentMethod === undefined) {
+        throw new PayenvError(
+          'ROUTE_UNSUPPORTED',
+          `CinetPay payout method not configured for ${recipient.network} / ${country}`,
+          { connectorId: id },
+        );
       }
+      if (amount.value < MIN_PAYOUT_AMOUNT || amount.value > MAX_PAYOUT_AMOUNT) {
+        throw new PayenvError(
+          'ROUTE_UNSUPPORTED',
+          `CinetPay transfers amounts from ${MIN_PAYOUT_AMOUNT} to ${MAX_PAYOUT_AMOUNT}, got ${amount.value}`,
+          { connectorId: id },
+        );
+      }
+
+      const merchantReference = merchantTransactionId(context.reference);
+      const body: Json = {
+        currency: amount.currency,
+        merchant_transaction_id: merchantReference,
+        phone_number: recipient.phone,
+        amount: amount.value,
+        payment_method: paymentMethod,
+        reason: request.description ?? `Payout ${request.idempotencyKey}`,
+        notify_url: notifyUrlFor(request.idempotencyKey),
+      };
+      attemptCountries.set(context.reference, country);
+
+      // A single call: money may leave the merchant's balance from here on. Without
+      // CinetPay's transaction id, an uncertain transfer is looked up by its reference.
+      let response: { httpStatus: number; data: Json };
+      try {
+        response = await call(country, 'POST', '/v1/transfer', context.signal, body);
+      } catch (thrown) {
+        throw toError('transfer', true, thrown);
+      }
+      const { httpStatus, data } = response;
+      // A transfer status (even with an HTTP error, e.g. INSUFFICIENT_BALANCE) is final or
+      // pending; anything else is an API error.
+      if (httpStatus >= 500 || !isTransferStatus(apiStatus(data))) {
+        throw toError('transfer', true, new CinetPayApiError('transfer', httpStatus, data));
+      }
+      return { ...transferResult(data, id), merchantReference };
+    },
+
+    async getStatus(query, context): Promise<StatusResult> {
       const identifier = query.providerRef ?? merchantTransactionId(query.reference);
       // The country is remembered by the instance that started the attempt. Otherwise
       // (e.g. after a restart) every configured country is asked.
       const known = attemptCountries.get(query.reference);
       const order = known ? [known, ...countries.filter((c) => c !== known)] : countries;
       for (const country of order) {
-        const data = await lookup(country, identifier, context.signal);
+        const data = await lookup(query.operation, country, identifier, context.signal);
         if (data === undefined) continue;
         attemptCountries.set(query.reference, country);
-        return toStatusResult(data, id);
+        return query.operation === 'payout'
+          ? { found: true, ...transferResult(data, id) }
+          : toStatusResult(data, id);
       }
       // Every country account authoritatively answered "not found".
       return { found: false };
@@ -508,6 +603,84 @@ export function toStatusResult(data: Json, connectorId: string): StatusResult {
     ...(error ? { error } : {}),
     raw: data,
   };
+}
+
+/** Maps a CinetPay transfer (creation answer or status lookup) to a Payenv result. */
+function transferResult(data: Json, connectorId: string): ProviderResult {
+  const { status, error } = transferStatus(data, connectorId);
+  const providerRef = nonEmpty(data.transaction_id);
+  const merchantReference = nonEmpty(data.merchant_transaction_id);
+  return {
+    status,
+    ...(providerRef ? { providerRef } : {}),
+    ...(merchantReference ? { merchantReference } : {}),
+    ...(error ? { error } : {}),
+    raw: data,
+  };
+}
+
+/** CinetPay statuses that end a transfer, with the Payenv reason. */
+const TRANSFER_FAILURES: Readonly<
+  Record<string, { code: PayenvErrorCode; message: string; retryClass?: RetryClass }>
+> = {
+  // CinetPay gives no reason: never a reason to try another provider automatically.
+  FAILED: { code: 'UNKNOWN_ERROR', message: 'failed', retryClass: 'do_not_retry' },
+  // The merchant's CinetPay balance, not the recipient's: CinetPay sent nothing, and
+  // another provider's balance may suffice.
+  INSUFFICIENT_BALANCE: {
+    code: 'INSUFFICIENT_BALANCE',
+    message: 'refused: insufficient balance on the CinetPay account',
+  },
+  USER_NOT_FOUND: {
+    code: 'INVALID_PHONE',
+    message: 'failed: no mobile money account for this number',
+  },
+  USER_IS_BLOCKED: { code: 'INVALID_PHONE', message: "failed: the recipient's account is blocked" },
+};
+
+/**
+ * Maps a CinetPay transfer status (`status` / `code`) to Payenv. Callers only pass
+ * answers accepted by {@link isTransferStatus}.
+ */
+function transferStatus(
+  data: Json,
+  connectorId: string,
+): { status: PaymentStatus; error?: PayenvError } {
+  const status = apiStatus(data);
+  switch (status) {
+    case 'SUCCESS':
+      return { status: 'succeeded' };
+    // The recipient has nothing to do: the transfer is being processed.
+    case 'INITIATED':
+    case 'PENDING':
+      return { status: 'pending' };
+  }
+  const failure = status ? TRANSFER_FAILURES[status] : undefined;
+  if (!failure || !status) return { status: 'unknown' };
+  const description = providerMessage(data);
+  return {
+    status: 'failed',
+    error: new PayenvError(
+      failure.code,
+      `CinetPay transfer ${failure.message}${description ? ` — ${description}` : ''} (${status})`,
+      {
+        connectorId,
+        providerCode: status,
+        raw: data,
+        ...(failure.retryClass ? { retryClass: failure.retryClass } : {}),
+      },
+    ),
+  };
+}
+
+/** Whether an answer describes an existing transfer (not an API error). */
+function isTransferStatus(status: string | undefined): boolean {
+  return (
+    status === 'SUCCESS' ||
+    status === 'INITIATED' ||
+    status === 'PENDING' ||
+    (status !== undefined && status in TRANSFER_FAILURES)
+  );
 }
 
 /** CinetPay statuses that end a payment, with the Payenv reason. */
@@ -588,6 +761,9 @@ function apiErrorCode(
   // A transaction with this attempt's reference already exists: only its status tells
   // whether money moved.
   if (status === 'TRANSACTION_EXIST') return { code: 'UNKNOWN_ERROR', retryClass: 'ambiguous' };
+  // A transfer status sent with a server error: only a lookup tells whether money moved.
+  // (Payment statuses such as INSUFFICIENT_BALANCE mean something else for transfers.)
+  if (error.step === 'transfer' && isTransferStatus(status)) return { code: 'UNKNOWN_ERROR' };
   const mapped = status ? API_ERRORS[status] : undefined;
   if (mapped) return { code: mapped };
   if (error.httpStatus === 401 || error.httpStatus === 403) {
