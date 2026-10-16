@@ -13,7 +13,10 @@ Senegal, Togo (XOF), Cameroon (XAF) and Guinea (GNF):
 - **`hosted_page`**: the customer is redirected to CinetPay's page and pays there (Orange
   Money, Wave, cards…).
 
-Status lookups and notification parsing. Payouts and refunds are not supported yet.
+**Payouts** (transfers from your CinetPay balance) to MTN, Moov, Orange Money, Wave,
+Free, T-Money and Airtel numbers, depending on the country.
+
+Status lookups and notification parsing. Refunds are not supported yet.
 
 ```ts
 import { createPayenv } from '@payenv/core';
@@ -54,10 +57,24 @@ const checkout = await payenv.collect({
   idempotencyKey: 'order_1235',
 });
 // checkout.nextAction === { type: 'redirect', url: 'https://…' }: send the customer there.
+
+// Payout (from your CinetPay balance in Côte d'Ivoire)
+const payout = await payenv.payout({
+  amount: { value: 5000, currency: 'XOF' },
+  recipient: { type: 'mobile_money', network: 'orange', country: 'CI', phone: '+2250707000001' },
+  description: 'Refund order 1234', // sent as the transfer reason
+  idempotencyKey: 'refund_1234',
+});
+// payout.status === 'pending' until CinetPay reports SUCCESS; call payenv.refresh.
 ```
 
 CinetPay requires the customer's **first name, last name and email**. Without them the
 connector declines the payment (`ROUTE_UNSUPPORTED`) and Payenv tries the next connector.
+
+Payouts are paid from the CinetPay account of the recipient's country (100 to 1,500,000
+per transfer). When that balance is too low, CinetPay refuses the transfer and Payenv
+tries the next connector (`INSUFFICIENT_BALANCE`). Transfers must be enabled on your
+CinetPay account.
 
 ## Webhooks
 
@@ -82,6 +99,7 @@ app.post('/webhooks/cinetpay', async (req, res) => {
 | `returnUrl` | `notifyUrl` | Where CinetPay sends the customer after a direct push. |
 | `environment` | `'sandbox'` | `'sandbox'` (`api.cinetpay.net`) or `'live'` (`api.cinetpay.co`). |
 | `methods` | `DEFAULT_METHODS` | Direct push networks per country, e.g. `{ CI: { mtn: 'MTN_CI' } }`. `{}` disables direct push. |
+| `payoutMethods` | `DEFAULT_PAYOUT_METHODS` | Payout networks per country, e.g. `{ CI: { orange: 'OM_CI' } }`. `{}` disables payouts. |
 | `hostedPage` | `true` | Offer the `hosted_page` method. |
 | `lang` | `'fr'` | Language of CinetPay's pages. |
 | `id` | `'cinetpay'` | Connector id. |

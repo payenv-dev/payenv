@@ -33,6 +33,14 @@ describe.skipIf(!configured)('cinetpay sandbox (real API)', () => {
     expect(result).toEqual({ found: false });
   });
 
+  it('reports an unknown transfer as not found', { timeout: 60_000 }, async () => {
+    const result = await connector().getStatus(
+      { operation: 'payout', reference: `payenv_unknown_${Date.now()}` },
+      { signal: AbortSignal.timeout(30_000) },
+    );
+    expect(result).toEqual({ found: false });
+  });
+
   it('pushes to a test number and reads the payment back', { timeout: 60_000 }, async () => {
     const reference = `att_${Date.now()}`;
     const cp = connector();
