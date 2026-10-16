@@ -28,7 +28,7 @@
 ## Phase 2 — Real fallback (`v0.2.0`)
 
 - [x] Second and third connectors (Kkiapay, CinetPay — CinetPay still to verify in the sandbox)
-- [x] Payouts in the unified API (FedaPay)
+- [x] Payouts in the unified API (FedaPay, CinetPay — CinetPay still to verify in the sandbox)
 - [ ] Refunds in the unified API
 - [ ] `@payenv/store-postgres`
 - [ ] Circuit breaker

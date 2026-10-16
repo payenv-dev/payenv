@@ -4,6 +4,7 @@ import {
   type Connector,
   createPayenv,
   PayenvError,
+  type PayoutRequest,
 } from '@payenv/core';
 import { describe, expect, it } from 'vitest';
 import { cinetpay, merchantTransactionId, parseCinetPayWebhook } from '../src/index.js';
@@ -22,13 +23,16 @@ interface Call {
 type Reply = { status?: number; body: unknown } | Error;
 
 /**
- * A fake CinetPay API. Logins succeed for known keys; payment calls answer from the
- * given handlers. Payments looked up are taken from `payments`, per API key.
+ * A fake CinetPay API. Logins succeed for known keys; payment and transfer calls answer
+ * from the given handlers. Payments and transfers looked up are taken from `payments` and
+ * `transfers`, per API key.
  */
 function fakeCinetPay(
   handlers: {
     init?: (body: Record<string, unknown>, call: number) => Reply;
+    transfer?: (body: Record<string, unknown>) => Reply;
     payments?: Record<string, Record<string, Record<string, unknown>>>;
+    transfers?: Record<string, Record<string, Record<string, unknown>>>;
     lookup?: () => Reply;
     expiredOnce?: boolean;
   } = {},
@@ -85,14 +89,19 @@ function fakeCinetPay(
       inits += 1;
       return reply(handlers.init?.(body ?? {}, inits) ?? initiated(body ?? {}));
     }
-    if (url.pathname.startsWith('/v1/payment/')) {
+    if (url.pathname === '/v1/transfer' && init?.method === 'POST') {
+      return reply(handlers.transfer?.(body ?? {}) ?? transferPending(body ?? {}));
+    }
+    const lookup = /^\/v1\/(payment|transfer)\/(.+)$/.exec(url.pathname);
+    if (lookup) {
       if (handlers.lookup) return reply(handlers.lookup());
-      const identifier = decodeURIComponent(url.pathname.slice('/v1/payment/'.length));
+      const identifier = decodeURIComponent(lookup[2] ?? '');
       const key = token?.split('_').slice(1, 4).join('_') ?? '';
-      const payment = handlers.payments?.[key]?.[identifier];
+      const table = lookup[1] === 'transfer' ? handlers.transfers : handlers.payments;
+      const found = table?.[key]?.[identifier];
       return reply(
-        payment
-          ? { body: payment }
+        found
+          ? { body: found }
           : { status: 404, body: { code: 404, status: 'NOT_FOUND', description: 'not found' } },
       );
     }
@@ -119,6 +128,24 @@ function initiated(body: Record<string, unknown>, details: Record<string, unknow
         must_be_redirected: body.direct_pay !== true,
         ...details,
       },
+    },
+  };
+}
+
+/** CinetPay's answer to a transfer (official SDK fixture). */
+function transferPending(body: Record<string, unknown>, overrides: Record<string, unknown> = {}) {
+  return {
+    body: {
+      code: 2002,
+      status: 'PENDING',
+      merchant_transaction_id: body.merchant_transaction_id,
+      transaction_id: 'tr_1',
+      notify_token: 'notify_tr_1',
+      amount: String(body.amount),
+      fee_amount: '0',
+      phone_number: body.phone_number,
+      currency: body.currency,
+      ...overrides,
     },
   };
 }
@@ -151,6 +178,28 @@ function hosted(overrides: Partial<CollectRequest> = {}): CollectRequest {
   });
 }
 
+function payout(overrides: Partial<PayoutRequest> = {}): PayoutRequest {
+  return {
+    amount: { value: 500, currency: 'XOF' },
+    recipient: { type: 'mobile_money', network: 'orange', country: 'CI', phone: '+2250707000001' },
+    idempotencyKey: 'payout_1',
+    ...overrides,
+  };
+}
+
+/** A transfer status lookup (official SDK fixture). */
+function transferStatus(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    code: 2002,
+    status: 'PENDING',
+    merchant_transaction_id: 'TRANSFER-001',
+    transaction_id: 'tr_1',
+    amount: '500',
+    fee_amount: '0',
+    ...overrides,
+  };
+}
+
 function connector(server: ReturnType<typeof fakeCinetPay>, extra = {}): Connector {
   return cinetpay({ credentials: { BJ, CI }, notifyUrl: NOTIFY, fetch: server.fetch, ...extra });
 }
@@ -168,6 +217,7 @@ describe('cinetpay connector — setup', () => {
     const capabilities = cinetpay({
       credentials: { BJ, CM: CI, CD: CI },
       notifyUrl: NOTIFY,
+      payoutMethods: {},
     }).capabilities();
     expect(capabilities).toEqual([
       {
@@ -193,11 +243,13 @@ describe('cinetpay connector — setup', () => {
     expect(
       cinetpay({ credentials: { BJ }, notifyUrl: NOTIFY, methods: {} })
         .capabilities()
+        .filter((capability) => capability.operation === 'collect')
         .map((capability) => capability.method),
     ).toEqual(['hosted_page']);
     expect(
       cinetpay({ credentials: { BJ }, notifyUrl: NOTIFY, hostedPage: false })
         .capabilities()
+        .filter((capability) => capability.operation === 'collect')
         .map((capability) => capability.method),
     ).toEqual(['mobile_money']);
   });
@@ -536,6 +588,331 @@ describe('cinetpay connector — with Payenv', () => {
 
     expect(refreshed.status).toBe('requires_action');
     expect(refreshed.nextAction).toMatchObject({ type: 'redirect' });
+  });
+});
+
+describe('cinetpay connector — payout', () => {
+  const merchantId = merchantTransactionId(context().reference);
+  const lookup = (cp: Connector, providerRef?: string) =>
+    cp.getStatus(
+      {
+        operation: 'payout',
+        reference: context().reference,
+        ...(providerRef ? { providerRef } : {}),
+      },
+      { signal: new AbortController().signal },
+    );
+  const send = (cp: Connector, request = payout(), ctx = context()) => {
+    if (!cp.payout) throw new Error('payouts expected');
+    return cp.payout(request, ctx);
+  };
+
+  it('declares payout routes from its own table', () => {
+    const payouts = cinetpay({ credentials: { BJ, CI }, notifyUrl: NOTIFY })
+      .capabilities()
+      .filter((capability) => capability.operation === 'payout');
+    expect(payouts).toEqual([
+      {
+        operation: 'payout',
+        method: 'mobile_money',
+        currencies: ['XOF'],
+        countries: ['BJ'],
+        networks: ['mtn', 'moov'],
+      },
+      {
+        operation: 'payout',
+        method: 'mobile_money',
+        currencies: ['XOF'],
+        countries: ['CI'],
+        networks: ['orange', 'mtn', 'moov', 'wave'],
+      },
+    ]);
+    expect(
+      cinetpay({ credentials: { BJ }, notifyUrl: NOTIFY, payoutMethods: { BJ: { mtn: 'MTN_BJ' } } })
+        .capabilities()
+        .filter((capability) => capability.operation === 'payout')
+        .map((capability) => capability.networks),
+    ).toEqual([['mtn']]);
+  });
+
+  it('sends a transfer from the merchant balance', async () => {
+    const server = fakeCinetPay();
+    const reported: string[] = [];
+    const result = await send(
+      connector(server, { notifyUrl: (key: string) => `${NOTIFY}?key=${key}` }),
+      payout(),
+      { ...context(), reportProviderRef: (ref) => reported.push(ref) },
+    );
+
+    expect(server.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      'POST /v1/oauth/login',
+      'POST /v1/transfer',
+    ]);
+    expect(server.calls[1]?.token).toBe('jwt_sk_test_ci_1');
+    expect(server.calls[1]?.body).toEqual({
+      currency: 'XOF',
+      merchant_transaction_id: merchantId,
+      phone_number: '+2250707000001',
+      amount: 500,
+      payment_method: 'OM_CI',
+      reason: 'Payout payout_1',
+      notify_url: `${NOTIFY}?key=payout_1`,
+    });
+    expect(result).toMatchObject({
+      status: 'pending',
+      providerRef: 'tr_1',
+      merchantReference: merchantId,
+    });
+    expect(result).not.toHaveProperty('nextAction');
+    // A single call: there is no id to report before money may move.
+    expect(reported).toEqual([]);
+  });
+
+  it('uses the description as the transfer reason', async () => {
+    const server = fakeCinetPay();
+    await send(connector(server), payout({ description: 'Refund #42' }));
+    expect(server.calls[1]?.body).toMatchObject({ reason: 'Refund #42' });
+  });
+
+  it('renews an expired token once and sends the transfer again', async () => {
+    const server = fakeCinetPay({ expiredOnce: true });
+    const result = await send(connector(server));
+    expect(result.status).toBe('pending');
+    expect(server.calls.map((call) => call.path)).toEqual([
+      '/v1/oauth/login',
+      '/v1/transfer',
+      '/v1/oauth/login',
+      '/v1/transfer',
+    ]);
+  });
+
+  it('reports a transfer that already succeeded', async () => {
+    const server = fakeCinetPay({
+      transfer: (body) => transferPending(body, { code: 100, status: 'SUCCESS' }),
+    });
+    expect((await send(connector(server))).status).toBe('succeeded');
+  });
+
+  it.each([
+    [
+      'a network missing from its payout methods',
+      payout({ recipient: { ...payout().recipient, network: 'celtiis' } }),
+    ],
+    [
+      'a country without credentials',
+      payout({ recipient: { ...payout().recipient, country: 'SN' } }),
+    ],
+    ['an amount below its minimum', payout({ amount: { value: 50, currency: 'XOF' } })],
+    ['an amount above its maximum', payout({ amount: { value: 2_000_000, currency: 'XOF' } })],
+  ])('refuses %s without calling CinetPay', async (_, request) => {
+    const server = fakeCinetPay();
+    await expect(send(connector(server), request)).rejects.toMatchObject({
+      code: 'ROUTE_UNSUPPORTED',
+      retryClass: 'safe_to_fallback',
+    });
+    expect(server.calls).toEqual([]);
+  });
+
+  it.each([
+    [{ status: 400, body: { code: 2005, status: 'INSUFFICIENT_BALANCE' } }],
+    [{ body: { code: 2005, status: 'INSUFFICIENT_BALANCE', transaction_id: 'tr_1' } }],
+  ])('can fall back when the merchant balance is too low (%j)', async (answer) => {
+    const server = fakeCinetPay({ transfer: () => answer });
+    const result = await send(connector(server));
+    expect(result.status).toBe('failed');
+    expect(result.error).toMatchObject({
+      code: 'INSUFFICIENT_BALANCE',
+      retryClass: 'safe_to_fallback',
+      providerCode: 'INSUFFICIENT_BALANCE',
+    });
+  });
+
+  it.each([
+    [{ status: 400, body: { code: 2006, status: 'USER_NOT_FOUND' } }, 'INVALID_PHONE'],
+    [{ status: 400, body: { code: 2007, status: 'USER_IS_BLOCKED' } }, 'INVALID_PHONE'],
+    [{ body: { code: 2010, status: 'FAILED', transaction_id: 'tr_1' } }, 'UNKNOWN_ERROR'],
+  ])('reports a refused transfer %j as final', async (answer, code) => {
+    const server = fakeCinetPay({ transfer: () => answer });
+    const result = await send(connector(server));
+    expect(result.status).toBe('failed');
+    expect(result.error).toMatchObject({ code, retryClass: 'do_not_retry' });
+  });
+
+  it('never claims a transfer failed when the call did not complete', async () => {
+    const server = fakeCinetPay({ transfer: () => new TypeError('fetch failed') });
+    await expect(send(connector(server))).rejects.toMatchObject({
+      code: 'NETWORK_ERROR',
+      retryClass: 'ambiguous',
+    });
+  });
+
+  it.each([
+    [{ status: 500, body: { code: -1, status: 'OPERATION_ERROR' } }, 'UNKNOWN_ERROR', 'ambiguous'],
+    [{ status: 502, body: { code: 2010, status: 'FAILED' } }, 'UNKNOWN_ERROR', 'ambiguous'],
+    [
+      { status: 503, body: { code: 2005, status: 'INSUFFICIENT_BALANCE' } },
+      'UNKNOWN_ERROR',
+      'ambiguous',
+    ],
+    [
+      { status: 409, body: { code: 1200, status: 'TRANSACTION_EXIST' } },
+      'UNKNOWN_ERROR',
+      'ambiguous',
+    ],
+    [{ body: { code: 200, status: 'OK' } }, 'UNKNOWN_ERROR', 'ambiguous'],
+    [
+      { status: 400, body: { code: 1004, status: 'INVALID_PARAMS' } },
+      'INVALID_REQUEST',
+      'do_not_retry',
+    ],
+    [
+      { status: 403, body: { code: 2011, status: 'NOT_ALLOWED' } },
+      'ROUTE_UNSUPPORTED',
+      'safe_to_fallback',
+    ],
+    [{ status: 429, body: { message: 'slow down' } }, 'RATE_LIMITED', 'safe_to_fallback'],
+  ])('maps the transfer answer %j', async (answer, code, retryClass) => {
+    const server = fakeCinetPay({ transfer: () => answer });
+    await expect(send(connector(server))).rejects.toMatchObject({ code, retryClass });
+  });
+
+  it('can fall back when the credentials are refused', async () => {
+    const server = fakeCinetPay();
+    const cp = cinetpay({
+      credentials: { CI: { apiKey: 'sk_test_wrong', apiPassword: 'x' } },
+      notifyUrl: NOTIFY,
+      fetch: server.fetch,
+    });
+    await expect(send(cp)).rejects.toMatchObject({
+      code: 'AUTHENTICATION_FAILED',
+      retryClass: 'safe_to_fallback',
+    });
+    expect(server.calls.map((call) => call.path)).toEqual(['/v1/oauth/login']);
+  });
+
+  it('reads a transfer by its merchant reference', async () => {
+    const server = fakeCinetPay({
+      transfers: {
+        sk_test_ci: {
+          [merchantId]: transferStatus({
+            code: 100,
+            status: 'SUCCESS',
+            merchant_transaction_id: merchantId,
+          }),
+        },
+      },
+    });
+    expect(await lookup(connector(server))).toMatchObject({
+      found: true,
+      status: 'succeeded',
+      providerRef: 'tr_1',
+      merchantReference: merchantId,
+    });
+    expect(server.calls.at(-1)?.path).toBe(`/v1/transfer/${merchantId}`);
+  });
+
+  it('never reads a payment for a transfer', async () => {
+    const server = fakeCinetPay({
+      payments: { sk_test_bj: { [merchantId]: transferStatus({ code: 100, status: 'SUCCESS' }) } },
+    });
+    expect(await lookup(connector(server))).toEqual({ found: false });
+    expect(server.calls.filter((call) => call.path.startsWith('/v1/transfer/'))).toHaveLength(2);
+  });
+
+  it.each([
+    ['INITIATED', 2001, 'pending', undefined],
+    ['PENDING', 2002, 'pending', undefined],
+    ['FAILED', 2010, 'failed', 'UNKNOWN_ERROR'],
+    ['INSUFFICIENT_BALANCE', 2005, 'failed', 'INSUFFICIENT_BALANCE'],
+    ['USER_NOT_FOUND', 2006, 'failed', 'INVALID_PHONE'],
+  ])('maps the transfer status %s', async (status, code, expected, errorCode) => {
+    const server = fakeCinetPay({
+      transfers: { sk_test_bj: { tr_1: transferStatus({ status, code }) } },
+    });
+    const result = await lookup(connector(server), 'tr_1');
+    expect(result).toMatchObject({ found: true, status: expected });
+    if (result.found) expect(result.error?.code).toBe(errorCode);
+  });
+
+  it('never reads an unexpected transfer status as "not found"', async () => {
+    const server = fakeCinetPay({
+      transfers: { sk_test_bj: { tr_1: transferStatus({ code: 2003, status: 'EXPIRED' }) } },
+    });
+    await expect(lookup(connector(server), 'tr_1')).rejects.toBeInstanceOf(PayenvError);
+  });
+});
+
+describe('cinetpay connector — payouts with Payenv', () => {
+  const fast = { statusCheckDelaysMs: [0], attemptTimeoutMs: 200 };
+  const backup = (): Connector => ({
+    id: 'backup',
+    capabilities: () => [
+      {
+        operation: 'payout',
+        method: 'mobile_money',
+        currencies: ['XOF'],
+        countries: ['CI'],
+        networks: ['orange'],
+      },
+    ],
+    collect: async () => ({ status: 'pending', providerRef: 'b_1' }),
+    payout: async () => ({ status: 'pending', providerRef: 'b_2' }),
+    getStatus: async () => ({ found: false }),
+  });
+
+  it('falls back to another balance when the CinetPay balance is too low', async () => {
+    const server = fakeCinetPay({
+      transfer: () => ({ status: 400, body: { code: 2005, status: 'INSUFFICIENT_BALANCE' } }),
+    });
+    const payenv = createPayenv({ connectors: [connector(server), backup()], ...fast });
+
+    const result = await payenv.payout(payout());
+
+    expect(result.connectorId).toBe('backup');
+    expect(result.attempts.map((attempt) => attempt.outcome)).toEqual(['fell_back', 'accepted']);
+    expect(result.attempts[0]?.error?.code).toBe('INSUFFICIENT_BALANCE');
+  });
+
+  it('falls back only after CinetPay confirms it never received the transfer', async () => {
+    const server = fakeCinetPay({ transfer: () => new TypeError('socket hang up') });
+    const payenv = createPayenv({ connectors: [connector(server), backup()], ...fast });
+
+    const result = await payenv.payout(payout());
+
+    expect(result.connectorId).toBe('backup');
+    expect(server.calls.some((call) => call.path.startsWith('/v1/transfer/'))).toBe(true);
+  });
+
+  it('keeps the payout when CinetPay has the transfer after a timeout', async () => {
+    let merchantId = '';
+    const server = fakeCinetPay({
+      transfer: (body) => {
+        merchantId = String(body.merchant_transaction_id);
+        return new TypeError('socket hang up');
+      },
+      lookup: () => ({ body: transferStatus({ merchant_transaction_id: merchantId }) }),
+    });
+    const payenv = createPayenv({ connectors: [connector(server), backup()], ...fast });
+
+    const result = await payenv.payout(payout());
+
+    expect(result.connectorId).toBe('cinetpay');
+    expect(result.status).toBe('pending');
+    expect(result.providerRef).toBe('tr_1');
+  });
+
+  it('refreshes a payout from its transfer status', async () => {
+    let status = transferStatus();
+    const server = fakeCinetPay({ lookup: () => ({ body: status }) });
+    const payenv = createPayenv({ connectors: [connector(server)], ...fast });
+    const request = payout();
+    await payenv.payout(request);
+
+    status = transferStatus({ code: 100, status: 'SUCCESS' });
+    const refreshed = await payenv.refresh(request.idempotencyKey);
+
+    expect(refreshed.status).toBe('succeeded');
+    expect(server.calls.at(-1)?.path).toBe('/v1/transfer/tr_1');
   });
 });
 
