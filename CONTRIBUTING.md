@@ -65,6 +65,8 @@ pnpm check      # lint + typecheck + tests
 pnpm test:watch # tests in watch mode
 pnpm format     # auto-format with Biome
 pnpm build      # compile every package to dist/
+pnpm demo       # build and start the web demo on http://localhost:3000
+pnpm changeset  # describe your change for the next release
 ```
 
 Layout:
@@ -76,6 +78,7 @@ packages/
     test/
   connector-fedapay/   @payenv/connector-fedapay
   connector-kkiapay/   @payenv/connector-kkiapay
+  connector-cinetpay/  @payenv/connector-cinetpay
 examples/
   fedapay-demo/        runnable demo: pnpm demo
 ```
