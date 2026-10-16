@@ -1,6 +1,6 @@
 # Roadmap
 
-*Last updated: 2026-09-26. Dates are intentions, not promises.*
+*Last updated: 2026-10-16. Dates are intentions, not promises.*
 
 ## Phase 0 — Foundations (now)
 
@@ -23,11 +23,11 @@
 - [x] FedaPay: verified end to end in the sandbox (success and failure)
 - [x] One runnable example (`examples/fedapay-demo`)
 - [x] Getting-started guide
-- [ ] Publish `0.1.0` to npm
+- [x] Publish `0.1.0` to npm
 
 ## Phase 2 — Real fallback (`v0.2.0`)
 
-- [ ] Second and third connectors (e.g. Kkiapay, CinetPay)
+- [x] Second and third connectors (Kkiapay, CinetPay — CinetPay still to verify in the sandbox)
 - [x] Payouts in the unified API (FedaPay)
 - [ ] Refunds in the unified API
 - [ ] `@payenv/store-postgres`
