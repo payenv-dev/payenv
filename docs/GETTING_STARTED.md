@@ -155,7 +155,17 @@ if (payment.nextAction?.type === 'widget') {
 `confirm` verifies with the provider that the transaction belongs to this payment and has
 the right amount. See [@payenv/connector-kkiapay](../packages/connector-kkiapay).
 
-More connectors are on the way: see [CONNECTORS.md](CONNECTORS.md).
+Other providers send the customer to their own payment page. With
+[@payenv/connector-cinetpay](../packages/connector-cinetpay), pay with
+`method: { type: 'hosted_page', country: 'CI', returnUrl }` and redirect the customer:
+
+```ts
+if (payment.nextAction?.type === 'redirect') {
+  // Send the customer to payment.nextAction.url; refresh when they come back.
+}
+```
+
+All supported and planned providers: [CONNECTORS.md](CONNECTORS.md).
 
 ## 8. Before going live
 

@@ -2,16 +2,16 @@
 
 *Last updated: 2026-10-16. Dates are intentions, not promises.*
 
-## Phase 0 — Foundations (now)
+## Phase 0 — Foundations ✅
 
 - [x] Project idea, vision, license (Apache 2.0)
 - [x] Initial documentation: architecture draft, contributing, security, governance
 - [x] Create the GitHub organization and repository (`payenv-dev/payenv`)
 - [x] Reserve the npm `@payenv` scope (all packages are published under it)
 - [x] Set up a contact address for security and conduct reports
-- [ ] Open discussions on the architecture draft
+- [ ] Open discussions on the architecture draft (GitHub Discussions)
 
-## Phase 1 — Core + first connector (`v0.1.0`)
+## Phase 1 — Core + first connector ✅ (`v0.1.0`)
 
 - [x] TypeScript monorepo, CI, lint, tests
 - [x] Release automation (Changesets + npm trusted publishing)
@@ -25,7 +25,7 @@
 - [x] Getting-started guide
 - [x] Publish `0.1.0` to npm
 
-## Phase 2 — Real fallback (`v0.2.0`)
+## Phase 2 — Real fallback (now, `v0.2`–`v0.3`)
 
 - [x] Second and third connectors (Kkiapay, CinetPay — CinetPay still to verify in the sandbox)
 - [x] Payouts in the unified API (FedaPay, CinetPay — CinetPay still to verify in the sandbox)
@@ -34,10 +34,12 @@
 - [ ] Circuit breaker
 - [ ] Normalized webhook handling with deduplication
 
-## Phase 3 — Smart routing (`v0.3.0`)
+## Phase 3 — Smart routing
 
-- [ ] `weighted`, `cheapest`, `bestSuccessRate`, and `custom` strategies
-- [ ] Observability hooks (OpenTelemetry-friendly)
+- [x] `custom` strategies (any ordering function passed as `routing`)
+- [ ] `weighted`, `cheapest`, and `bestSuccessRate` strategies
+- [x] Lifecycle events (`onEvent`)
+- [ ] OpenTelemetry helpers
 - [ ] Connector conformance test suite (shared, reusable by any connector)
 
 ## Phase 4 — Toward `v1.0.0`
@@ -47,7 +49,7 @@
 - [ ] At least 6 stable connectors with named maintainers
 - [ ] Documentation website
 
-## Next ecosystem: PHP & Laravel (after `v0.2.0`)
+## Next ecosystem: PHP & Laravel (once the model is proven)
 
 Laravel is the most used back-end framework among our target developers after
 JavaScript. Once the model is proven by 2–3 connectors:
