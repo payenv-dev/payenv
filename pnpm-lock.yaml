@@ -37,6 +37,15 @@ importers:
         specifier: ^24.0.0
         version: 24.19.1
 
+  packages/connector-cinetpay:
+    devDependencies:
+      '@payenv/core':
+        specifier: workspace:^
+        version: link:../core
+      '@types/node':
+        specifier: ^26.6.3
+        version: 26.6.3
+
   packages/connector-fedapay:
     devDependencies:
       '@payenv/core':

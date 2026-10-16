@@ -2,7 +2,14 @@
   "$schema": "../node_modules/.pnpm/@changesets+config@4.0.1/node_modules/@changesets/config/schema.json",
   "baseBranch": "main",
   "access": "public",
-  "fixed": [["@payenv/core", "@payenv/connector-fedapay", "@payenv/connector-kkiapay"]],
+  "fixed": [
+    [
+      "@payenv/core",
+      "@payenv/connector-fedapay",
+      "@payenv/connector-kkiapay",
+      "@payenv/connector-cinetpay"
+    ]
+  ],
   "updateInternalDependencies": "patch",
   "privatePackages": {
     "version": false,
