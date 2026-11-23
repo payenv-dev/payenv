@@ -36,22 +36,18 @@ customer twice**. Payenv does it once, in the open, with tests.
 ```ts
 import { createPayenv, priority } from '@payenv/core';
 import { fedapay } from '@payenv/connector-fedapay';
-import { cinetpay } from '@payenv/connector-cinetpay';
+import { kkiapay } from '@payenv/connector-kkiapay';
 
 const payenv = createPayenv({
   connectors: [
     fedapay({ secretKey: process.env.FEDAPAY_SECRET_KEY! }),
-    cinetpay({
-      credentials: {
-        BJ: {
-          apiKey: process.env.CINETPAY_API_KEY_BJ!,
-          apiPassword: process.env.CINETPAY_API_PASSWORD_BJ!,
-        },
-      },
-      notifyUrl: (key) => `https://shop.example/webhooks/cinetpay?key=${key}`,
+    kkiapay({
+      publicKey: process.env.KKIAPAY_PUBLIC_KEY!,
+      privateKey: process.env.KKIAPAY_PRIVATE_KEY!,
+      secretKey: process.env.KKIAPAY_SECRET_KEY!,
     }),
   ],
-  routing: priority(['fedapay', 'cinetpay']), // FedaPay first, CinetPay as a fallback
+  routing: priority(['fedapay', 'kkiapay']), // FedaPay first, Kkiapay as a fallback
 });
 
 const payment = await payenv.collect({
@@ -59,15 +55,17 @@ const payment = await payenv.collect({
   method: { type: 'mobile_money', network: 'mtn', country: 'BJ', phone: '+22997000000' },
   customer: { firstName: 'Ada', lastName: 'Lovelace', email: 'ada@example.com' },
   idempotencyKey: 'order_1234', // retries with the same key never charge twice
+  supportedWidgets: ['kkiapay'], // your checkout page can open the Kkiapay widget
 });
 
-payment.status; // 'pending': the customer confirms on their phone
+// FedaPay answered: payment.status === 'pending', the customer confirms on their phone.
+// FedaPay was down: payment.nextAction.type === 'widget', open the Kkiapay widget instead.
 await payenv.refresh('order_1234'); // later: ask the provider for the latest status
 ```
 
-If FedaPay is down **before** the push is sent, Payenv tries CinetPay. If FedaPay times
-out **after** the push may have been sent, Payenv first asks FedaPay what happened, and
-only moves on if FedaPay confirms nothing was charged.
+If FedaPay is down **before** the push is sent, Payenv falls back to Kkiapay. If FedaPay
+times out **after** the push may have been sent, Payenv first asks FedaPay what happened,
+and only moves on if FedaPay confirms nothing was charged.
 
 ## Packages
 
@@ -76,7 +74,7 @@ only moves on if FedaPay confirms nothing was charged.
 | [`@payenv/core`](packages/core) | Unified model, router, safe-fallback engine, in-memory store | — |
 | [`@payenv/connector-fedapay`](packages/connector-fedapay) | Mobile money push and payouts (MTN, Moov, Celtiis), signed webhooks | 🇧🇯 Benin |
 | [`@payenv/connector-kkiapay`](packages/connector-kkiapay) | Payments in the Kkiapay widget, verified server-side (MTN, Moov) | 🇧🇯 Benin |
-| [`@payenv/connector-cinetpay`](packages/connector-cinetpay) | Mobile money push, hosted payment page, payouts | 🇧🇯 🇧🇫 🇨🇮 🇲🇱 🇳🇪 🇸🇳 🇹🇬 🇨🇲 🇬🇳 |
+| [`@payenv/connector-cinetpay`](packages/connector-cinetpay) | 🧪 **Experimental.** Mobile money push, hosted payment page, payouts | 🇧🇯 🇧🇫 🇨🇮 🇲🇱 🇳🇪 🇸🇳 🇹🇬 🇨🇲 🇬🇳 |
 | [`@payenv/store-postgres`](packages/store-postgres) | PostgreSQL store: idempotency shared by all servers, lookups for webhooks and reconciliation | — |
 
 ```sh
@@ -87,8 +85,9 @@ npm install @payenv/core @payenv/connector-fedapay
 Node.js 20.19+, Deno, Bun or any runtime with `fetch` and Web Crypto. ESM and `require`.
 No runtime dependencies.
 
-The CinetPay connector is built from CinetPay's official SDK and tested against a fake API;
-it has not been verified against the CinetPay sandbox yet (see its
+FedaPay and Kkiapay are verified end to end in their sandboxes. The CinetPay connector is
+**experimental**: it is built from CinetPay's official SDK and tested against a fake API,
+but not yet verified against the CinetPay sandbox (see its
 [QUIRKS.md](packages/connector-cinetpay/QUIRKS.md)). Check the [changelog](CHANGELOG.md)
 for what each npm version contains.
 
@@ -114,9 +113,10 @@ for what each npm version contains.
 | Webhook verification and parsing, per connector | e.g. `verifyFedaPayWebhook` |
 | Phone numbers typed by customers converted to E.164 | `toE164('61 00 00 00', 'BJ')` |
 
-**Planned** (see the [roadmap](docs/ROADMAP.md)): refunds, circuit breaker, normalized webhook handling with deduplication, `weighted` / `cheapest` /
-`bestSuccessRate` strategies, more connectors (PayDunya, Flutterwave, Paystack, Stripe…),
-a PHP / Laravel port.
+**What comes next is up to you.** Refunds, a circuit breaker, more routing strategies, more
+providers (PayDunya, Flutterwave, Paystack, Stripe…), a PHP / Laravel port: they are all on
+the [roadmap](docs/ROADMAP.md), and the ones users ask for come first. Tell us what you need
+in [Discussions](https://github.com/payenv-dev/payenv/discussions) or open an issue.
 
 ## Get started
 

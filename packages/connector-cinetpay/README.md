@@ -2,8 +2,10 @@
 
 [CinetPay](https://cinetpay.com) connector for [Payenv](https://github.com/payenv-dev/payenv).
 
-> 🚧 Pre-release (`0.x`). Built from CinetPay's official SDK; not yet verified end to end
-> in the sandbox (see [QUIRKS.md](QUIRKS.md)).
+> 🧪 **Experimental.** Built from CinetPay's official SDK and tested against a fake API, but
+> not yet verified end to end in the CinetPay sandbox (see [QUIRKS.md](QUIRKS.md)). Try it in
+> the sandbox before going live, and please
+> [report](https://github.com/payenv-dev/payenv/issues) what you find.
 
 **Supported today:** collections in Benin, Burkina Faso, Côte d'Ivoire, Mali, Niger,
 Senegal, Togo (XOF), Cameroon (XAF) and Guinea (GNF):

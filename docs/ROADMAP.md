@@ -1,6 +1,6 @@
 # Roadmap
 
-*Last updated: 2026-10-16. Dates are intentions, not promises.*
+*Last updated: 2026-11-23. Dates are intentions, not promises.*
 
 ## Phase 0 — Foundations ✅
 
@@ -9,7 +9,6 @@
 - [x] Create the GitHub organization and repository (`payenv-dev/payenv`)
 - [x] Reserve the npm `@payenv` scope (all packages are published under it)
 - [x] Set up a contact address for security and conduct reports
-- [ ] Open discussions on the architecture draft (GitHub Discussions)
 
 ## Phase 1 — Core + first connector ✅ (`v0.1.0`)
 
@@ -25,24 +24,34 @@
 - [x] Getting-started guide
 - [x] Publish `0.1.0` to npm
 
-## Phase 2 — Real fallback (now, `v0.2`–`v0.3`)
+## Phase 2 — First public release (now, `v0.3`)
 
-- [x] Second and third connectors (Kkiapay, CinetPay — CinetPay still to verify in the sandbox)
-- [x] Payouts in the unified API (FedaPay, CinetPay — CinetPay still to verify in the sandbox)
-- [ ] Refunds in the unified API
-- [x] `@payenv/store-postgres`
-- [ ] Circuit breaker
-- [ ] Normalized webhook handling with deduplication
+The goal is one need that works: collecting mobile money with a safe fallback between
+providers. Then we listen.
 
-## Phase 3 — Smart routing
-
-- [x] `custom` strategies (any ordering function passed as `routing`)
-- [ ] `weighted`, `cheapest`, and `bestSuccessRate` strategies
+- [x] Second and third connectors (Kkiapay; CinetPay **experimental** until verified in its sandbox)
+- [x] Payouts in the unified API (FedaPay; CinetPay experimental)
+- [x] `@payenv/store-postgres`, and a guide to plug in any other database
+- [x] `custom` routing strategies (any ordering function passed as `routing`)
 - [x] Lifecycle events (`onEvent`)
-- [ ] OpenTelemetry helpers
-- [ ] Connector conformance test suite (shared, reusable by any connector)
+- [ ] Publish `0.3.0`
+- [ ] Open GitHub Discussions and share the project with developers around us
 
-## Phase 4 — Toward `v1.0.0`
+## Next — driven by your feedback
+
+Nothing below is scheduled. What users ask for comes first: tell us in
+[Discussions](https://github.com/payenv-dev/payenv/discussions) or open an issue.
+
+- Verify CinetPay in its sandbox (then drop the experimental label)
+- Refunds in the unified API
+- Circuit breaker
+- Normalized webhook handling with deduplication
+- `weighted`, `cheapest`, and `bestSuccessRate` strategies
+- OpenTelemetry helpers
+- Connector conformance test suite (shared, reusable by any connector)
+- More connectors (PayDunya, Flutterwave, Paystack, Stripe…)
+
+## Toward `v1.0.0`
 
 - [ ] Stable API and language-neutral specification
 - [ ] External security review

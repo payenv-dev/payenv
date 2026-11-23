@@ -8,7 +8,13 @@ Before `1.0.0`, minor versions may contain breaking changes.
 
 ## [Unreleased]
 
+### Changed
+- 2026-11-23 — `@payenv/connector-cinetpay` is marked **experimental** until it is verified
+  in the CinetPay sandbox. The README example now falls back from FedaPay to Kkiapay, both
+  verified end to end.
+
 ### Added
+- 2026-11-23 — Guide: plug Payenv into any database (MySQL example of the `Store` interface).
 - 2026-10-16 — `@payenv/store-postgres`: PostgreSQL store. Atomic `create` (one charge per
   idempotency key across servers), settled payments never overwritten by a stale write,
   `findByProviderRef` for webhooks and `listOpen` for reconciliation jobs.

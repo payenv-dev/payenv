@@ -3,7 +3,8 @@
 '@payenv/core': minor
 ---
 
-CinetPay connector.
+CinetPay connector, **experimental**: built from CinetPay's official SDK and tested against a
+fake API, not yet verified in the CinetPay sandbox.
 
 - `@payenv/connector-cinetpay` (new): collections with CinetPay's API v1 in Benin, Burkina
   Faso, Côte d'Ivoire, Mali, Niger, Senegal, Togo, Cameroon and Guinea, by direct push

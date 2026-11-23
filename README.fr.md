@@ -36,22 +36,18 @@ un client deux fois**. Payenv le fait une fois, en open source, avec des tests.
 ```ts
 import { createPayenv, priority } from '@payenv/core';
 import { fedapay } from '@payenv/connector-fedapay';
-import { cinetpay } from '@payenv/connector-cinetpay';
+import { kkiapay } from '@payenv/connector-kkiapay';
 
 const payenv = createPayenv({
   connectors: [
     fedapay({ secretKey: process.env.FEDAPAY_SECRET_KEY! }),
-    cinetpay({
-      credentials: {
-        BJ: {
-          apiKey: process.env.CINETPAY_API_KEY_BJ!,
-          apiPassword: process.env.CINETPAY_API_PASSWORD_BJ!,
-        },
-      },
-      notifyUrl: (key) => `https://boutique.example/webhooks/cinetpay?key=${key}`,
+    kkiapay({
+      publicKey: process.env.KKIAPAY_PUBLIC_KEY!,
+      privateKey: process.env.KKIAPAY_PRIVATE_KEY!,
+      secretKey: process.env.KKIAPAY_SECRET_KEY!,
     }),
   ],
-  routing: priority(['fedapay', 'cinetpay']), // FedaPay d'abord, CinetPay en secours
+  routing: priority(['fedapay', 'kkiapay']), // FedaPay d'abord, Kkiapay en secours
 });
 
 const payment = await payenv.collect({
@@ -59,15 +55,17 @@ const payment = await payenv.collect({
   method: { type: 'mobile_money', network: 'mtn', country: 'BJ', phone: '+22997000000' },
   customer: { firstName: 'Ada', lastName: 'Lovelace', email: 'ada@example.com' },
   idempotencyKey: 'commande_1234', // réessayer avec la même clé ne débite jamais deux fois
+  supportedWidgets: ['kkiapay'], // votre page de paiement sait ouvrir le widget Kkiapay
 });
 
-payment.status; // 'pending' : le client confirme sur son téléphone
+// FedaPay a répondu : payment.status === 'pending', le client confirme sur son téléphone.
+// FedaPay était en panne : payment.nextAction.type === 'widget', ouvrez le widget Kkiapay.
 await payenv.refresh('commande_1234'); // plus tard : demander le dernier statut au fournisseur
 ```
 
-Si FedaPay est en panne **avant** l'envoi de la demande de paiement, Payenv essaie
-CinetPay. Si FedaPay ne répond pas **après** un envoi possible, Payenv demande d'abord à
-FedaPay ce qui s'est passé, et ne passe à CinetPay que si FedaPay confirme que rien n'a été
+Si FedaPay est en panne **avant** l'envoi de la demande de paiement, Payenv bascule sur
+Kkiapay. Si FedaPay ne répond pas **après** un envoi possible, Payenv demande d'abord à
+FedaPay ce qui s'est passé, et ne passe à Kkiapay que si FedaPay confirme que rien n'a été
 débité.
 
 ## Paquets
@@ -77,7 +75,7 @@ débité.
 | [`@payenv/core`](packages/core) | Modèle unifié, routeur, moteur de fallback sûr, stockage en mémoire | — |
 | [`@payenv/connector-fedapay`](packages/connector-fedapay) | Paiement mobile money et payouts (MTN, Moov, Celtiis), webhooks signés | 🇧🇯 Bénin |
 | [`@payenv/connector-kkiapay`](packages/connector-kkiapay) | Paiements dans le widget Kkiapay, vérifiés côté serveur (MTN, Moov) | 🇧🇯 Bénin |
-| [`@payenv/connector-cinetpay`](packages/connector-cinetpay) | Paiement mobile money, page de paiement hébergée, payouts | 🇧🇯 🇧🇫 🇨🇮 🇲🇱 🇳🇪 🇸🇳 🇹🇬 🇨🇲 🇬🇳 |
+| [`@payenv/connector-cinetpay`](packages/connector-cinetpay) | 🧪 **Expérimental.** Paiement mobile money, page de paiement hébergée, payouts | 🇧🇯 🇧🇫 🇨🇮 🇲🇱 🇳🇪 🇸🇳 🇹🇬 🇨🇲 🇬🇳 |
 | [`@payenv/store-postgres`](packages/store-postgres) | Stockage PostgreSQL : idempotence partagée entre serveurs, recherche pour les webhooks et la réconciliation | — |
 
 ```sh
@@ -88,8 +86,9 @@ npm install @payenv/core @payenv/connector-fedapay
 Node.js 20.19+, Deno, Bun ou tout environnement avec `fetch` et Web Crypto. ESM et
 `require`. Aucune dépendance à l'exécution.
 
-Le connecteur CinetPay est construit à partir du SDK officiel de CinetPay et testé contre
-une fausse API ; il n'a pas encore été vérifié dans la sandbox CinetPay (voir son
+FedaPay et Kkiapay sont vérifiés de bout en bout dans leurs sandbox. Le connecteur CinetPay
+est **expérimental** : il est construit à partir du SDK officiel de CinetPay et testé contre
+une fausse API, mais pas encore vérifié dans la sandbox CinetPay (voir son
 [QUIRKS.md](packages/connector-cinetpay/QUIRKS.md)). Le [changelog](CHANGELOG.md) indique ce
 que contient chaque version npm.
 
@@ -115,9 +114,11 @@ que contient chaque version npm.
 | Vérification et lecture des webhooks, par connecteur | ex. `verifyFedaPayWebhook` |
 | Numéros saisis par les clients convertis en E.164 | `toE164('61 00 00 00', 'BJ')` |
 
-**Prévues** (voir la [feuille de route](docs/ROADMAP.md)) : remboursements, coupe-circuit, webhooks unifiés avec déduplication, stratégies
-`weighted` / `cheapest` / `bestSuccessRate`, d'autres connecteurs (PayDunya, Flutterwave,
-Paystack, Stripe…), un portage PHP / Laravel.
+**La suite dépend de vous.** Remboursements, coupe-circuit, nouvelles stratégies de routage,
+nouveaux fournisseurs (PayDunya, Flutterwave, Paystack, Stripe…), portage PHP / Laravel : tout
+est dans la [feuille de route](docs/ROADMAP.md), et ce que les utilisateurs demandent passe en
+premier. Dites-nous ce dont vous avez besoin dans les
+[Discussions](https://github.com/payenv-dev/payenv/discussions) ou ouvrez une issue.
 
 ## Démarrer
 
