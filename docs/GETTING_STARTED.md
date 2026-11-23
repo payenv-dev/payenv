@@ -156,7 +156,8 @@ if (payment.nextAction?.type === 'widget') {
 the right amount. See [@payenv/connector-kkiapay](../packages/connector-kkiapay).
 
 Other providers send the customer to their own payment page. With
-[@payenv/connector-cinetpay](../packages/connector-cinetpay), pay with
+[@payenv/connector-cinetpay](../packages/connector-cinetpay) (experimental: not yet verified
+in the CinetPay sandbox), pay with
 `method: { type: 'hosted_page', country: 'CI', returnUrl }` and redirect the customer:
 
 ```ts
@@ -171,23 +172,78 @@ All supported and planned providers: [CONNECTORS.md](CONNECTORS.md).
 
 - [ ] Use `environment: 'live'` and a live key from a secret manager or environment variable.
 - [ ] **Use a persistent store.** The default in-memory store loses idempotency on restart and
-      is not shared between instances. Implement the `Store` interface on your database. Its
-      `create` must be atomic, for example with a unique constraint on the idempotency key:
+      is not shared between instances. With PostgreSQL, use
+      [@payenv/store-postgres](../packages/store-postgres):
 
       ```ts
-      import type { Store } from '@payenv/core';
+      import pg from 'pg';
+      import { createPostgresStore } from '@payenv/store-postgres';
 
-      const store: Store = {
-        // INSERT ... ON CONFLICT (idempotency_key) DO NOTHING → true if a row was inserted
-        async create(payment) { /* ... */ },
-        async get(idempotencyKey) { /* SELECT ... */ },
-        async update(payment) { /* UPDATE ... */ },
-      };
+      const store = createPostgresStore({ client: new pg.Pool({ connectionString: process.env.DATABASE_URL }) });
+      await store.migrate();
       createPayenv({ connectors, store });
       ```
+
+      For another database, see [Use another database](#use-another-database).
+- [ ] Reconcile open payments regularly: `store.listOpen()`, then `payenv.refresh` on each.
 - [ ] Verify every webhook signature and pass the **raw** body.
 - [ ] Never log raw provider responses or webhooks: they contain personal data.
-- [ ] Reconcile `pending` and `unknown` payments regularly with `refresh`.
+
+## Use another database
+
+A store has three methods: `create`, `get` and `update`. The only hard rule: `create` must be
+**atomic**. When two requests arrive with the same idempotency key, exactly one may return
+`true`. A primary key on the idempotency key gives you that for free.
+
+Example with MySQL and [`mysql2`](https://www.npmjs.com/package/mysql2):
+
+```sql
+CREATE TABLE payenv_payments (
+  idempotency_key VARCHAR(255) PRIMARY KEY,
+  payment JSON NOT NULL
+);
+```
+
+```ts
+import type { Payment, Store } from '@payenv/core';
+import type { Pool, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
+
+export function createMySqlStore(pool: Pool): Store {
+  return {
+    async create(payment) {
+      try {
+        await pool.execute('INSERT INTO payenv_payments (idempotency_key, payment) VALUES (?, ?)', [
+          payment.idempotencyKey,
+          JSON.stringify(payment),
+        ]);
+        return true;
+      } catch (error) {
+        // Another request already created this payment: Payenv returns that one instead.
+        if ((error as { code?: string }).code === 'ER_DUP_ENTRY') return false;
+        throw error;
+      }
+    },
+    async get(idempotencyKey) {
+      const [rows] = await pool.execute<RowDataPacket[]>(
+        'SELECT payment FROM payenv_payments WHERE idempotency_key = ?',
+        [idempotencyKey],
+      );
+      const value = rows[0]?.payment;
+      return typeof value === 'string' ? (JSON.parse(value) as Payment) : (value as Payment | undefined);
+    },
+    async update(payment) {
+      await pool.execute<ResultSetHeader>(
+        'UPDATE payenv_payments SET payment = ? WHERE idempotency_key = ?',
+        [JSON.stringify(payment), payment.idempotencyKey],
+      );
+    },
+  };
+}
+```
+
+The same shape works with SQLite, SQL Server, MongoDB (a unique index on the key) or an ORM
+such as Prisma: insert, and treat a duplicate-key error as `false`. To find a payment from a
+webhook, also save `payment.connectorId` and `payment.providerRef` in their own columns.
 
 ## Try the demo
 
