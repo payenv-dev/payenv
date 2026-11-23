@@ -1,6 +1,6 @@
 {
   "name": "@payenv/connector-fedapay",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "FedaPay connector for Payenv (mobile money in Benin: MTN, Moov, Celtiis).",
   "license": "Apache-2.0",
   "author": "Jules Mahounou (https://github.com/jules-mahounou)",

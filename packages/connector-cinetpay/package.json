@@ -1,6 +1,6 @@
 {
   "name": "@payenv/connector-cinetpay",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "CinetPay connector for Payenv (mobile money in West and Central Africa: hosted checkout and direct push).",
   "license": "Apache-2.0",
   "author": "Jules Mahounou (https://github.com/jules-mahounou)",

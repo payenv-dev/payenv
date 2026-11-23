@@ -1,6 +1,6 @@
 {
   "name": "@payenv/store-postgres",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "PostgreSQL store for Payenv: atomic idempotency, payment lookups for webhooks and reconciliation.",
   "license": "Apache-2.0",
   "author": "Jules Mahounou (https://github.com/jules-mahounou)",
